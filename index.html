@@ -1,0 +1,16 @@
+<!doctype html>
+<!-- class="dark" data-theme="vlime" mirrors V's Command Hub so the embeddable
+     component drops in clean later; Onyx's own theming is JS-driven (CSS vars). -->
+<html class="dark" data-theme="vlime">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Content-Security-Policy is set per-environment (strict in production,
+         relaxed for Vite HMR in dev) via response headers in the main process. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Onyx</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/renderer/renderer.tsx"></script>
+  </body>
+</html>
