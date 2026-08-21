@@ -166,10 +166,33 @@ interface FsApi {
 ```
 
 The standalone app implements `FsApi` over `window.onyx` (`src/renderer/fs-api.ts`); the
-Hub implements it over its own main process. **Same contract, no rewrite.** Onyx ships the
-component the same way Conduit does: `npm run build:lib` produces a committed
-`lib/onyx-explorer.js` + `.css`, React externalized, consumable as a git dependency with no
-toolchain.
+Hub implements it over its own main process. **Same contract, no rewrite.**
+
+In practice a host needs all three layers, so Onyx ships all three as committed bundles
+(`npm run build:embed`), consumable as a git dependency with no toolchain — no Electron
+download, no `prepare` step:
+
+| Import | File | What it is |
+|--------|------|-----------|
+| `onyx` | `lib/onyx-explorer.js` | `<Explorer/>`, `createBridgeFsApi()`, the vlime `PRESETS`, `DEFAULT_SETTINGS`. ESM, React externalized. |
+| `onyx/style.css` | `lib/onyx-explorer.css` | The chrome, **scoped to `.onyx-root`** at build time (see below). |
+| `onyx/main` | `lib/onyx-main.cjs` | `registerFsIpc(host)` — every handler behind `FsApi` — plus the `onyx-media:` scheme. CJS, `electron` external. |
+| `onyx/preload` | `lib/onyx-preload.cjs` | `exposeOnyxBridge()` — puts `window.onyx` in place. CJS. |
+
+Two things make this work rather than merely compile:
+
+- **The main process is shared, not reimplemented.** `registerFsIpc()` (`src/main/register-fs-ipc.ts`)
+  is called by Onyx's own `main.ts` *and* by the Hub's, with only a `send`, a window getter,
+  and a settings pair injected. A host that reimplemented this would be reimplementing §9 —
+  OneDrive placeholders, junction loops, MAX_PATH, per-entry permission failures — and would
+  get them wrong silently, months later.
+- **The stylesheet cannot escape the panel.** `styles.css` is written for an app that owns its
+  document: it resets `html, body, #root`, restyles bare `button`/`input`, and paints every
+  scrollbar. The library build rewrites every selector through PostCSS — document-level ones
+  collapse onto `.onyx-root` (the mount container *is* the explorer's document), everything
+  else becomes a descendant of it. Drop the CSS in any host and nothing outside the panel
+  changes. Pair it with `applyTheme(theme, offset, containerEl)`, which already takes the
+  container as its root.
 
 ---
 
@@ -282,8 +305,10 @@ sync via OSC 7. **This is the phase that needs the C++ toolchain** — see Condu
 for the Spectre-libs patch story; reuse `patches/node-pty+1.1.0.patch` verbatim.
 
 ### Phase 7 — Ask V + Hub panel — DONE
-WebSocket client to V's brain; "Ask V" on a selection. `build:lib` the `<Explorer/>`
-component and dock it in the Hub.
+WebSocket client to V's brain; "Ask V" on a selection. `build:embed` the three bundles (§4)
+and dock `<Explorer/>` in the Hub — the Hub side lands in `ai-assistant` as the Explorer
+panel on the left rail, injecting an `assistant` adapter over the brain connection it
+already holds rather than opening a second socket.
 
 ---
 

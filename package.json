@@ -1,8 +1,8 @@
 {
   "name": "onyx",
   "productName": "Onyx",
-  "version": "0.3.1",
-  "description": "A custom, fully themeable file explorer for Windows. Also ships an embeddable React <Explorer/> component (lib/) for V's Command Hub.",
+  "version": "0.4.0",
+  "description": "A custom, fully themeable file explorer for Windows. Also ships an embeddable React <Explorer/> component plus its main-process and preload halves (lib/) for V's Command Hub.",
   "main": ".vite/build/main.js",
   "module": "./lib/onyx-explorer.js",
   "exports": {
@@ -10,6 +10,12 @@
       "import": "./lib/onyx-explorer.js"
     },
     "./style.css": "./lib/onyx-explorer.css",
+    "./main": {
+      "require": "./lib/onyx-main.cjs"
+    },
+    "./preload": {
+      "require": "./lib/onyx-preload.cjs"
+    },
     "./package.json": "./package.json"
   },
   "private": true,
@@ -22,7 +28,9 @@
     "typecheck": "tsc --noEmit",
     "build:lib": "vite build --config vite.lib.config.ts",
     "rebuild": "electron-rebuild -f -w node-pty",
-    "postinstall": "node scripts/postinstall.cjs"
+    "postinstall": "node scripts/postinstall.cjs",
+    "build:node-lib": "vite build --config vite.node-lib.config.ts",
+    "build:embed": "npm run build:lib && npm run build:node-lib"
   },
   "keywords": [],
   "author": {
@@ -70,5 +78,10 @@
     "electron-store": "^8.2.0",
     "node-pty": "^1.1.0",
     "update-electron-app": "^3.3.0"
-  }
+  },
+  "files": [
+    "lib",
+    "README.md",
+    "ONYX_HANDOFF.md"
+  ]
 }
