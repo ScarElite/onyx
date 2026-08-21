@@ -31,6 +31,8 @@ filesystem.
 - [x] **Sidebar** — pinned places, Quick Access, and drives with live capacity bars
 - [x] **Query filter bar** — `ext:png size:>10mb mod:today -draft`, ANDed and instant
 - [x] **Command palette** — Ctrl+P fuzzy-jumps to a folder, Ctrl+Shift+P runs any command
+- [x] **Home tab** — Quick access, drives, and recent files; where new tabs start
+- [x] **Real Windows shell icons** — file-association artwork, `.exe` icons, special folders
 - [x] **Details + grid views** — grid draws real image thumbnails, virtualized either way
 - [x] **Preview pane + Space-to-peek** — images, text/code, PDF, video, audio, metadata
 - [x] **Recursive search** — names and file contents, streaming and cancellable
@@ -57,6 +59,7 @@ See **ONYX_HANDOFF.md** for the full architecture, phased plan, and the Windows 
 | Ctrl+P / Ctrl+Shift+P | Go to folder / run a command |
 | Ctrl+F / Ctrl+Shift+F | Filter bar / recursive search |
 | Ctrl+R | Refresh the pane |
+| Alt+Home | Go to the Home tab |
 | Space | Peek at the selected file |
 | F2 / Shift+F2 | Rename / batch rename |
 | F5 / F6 | Copy / move selection to the other pane |
@@ -72,6 +75,26 @@ See **ONYX_HANDOFF.md** for the full architecture, phased plan, and the Windows 
 Explorer are copied. Hold **Alt** as you start a drag to hand the files to *another
 application* — that path uses Electron's OS-level drag, which takes over the pointer and so
 cannot also be the default.
+
+## Icons and Home
+
+**Icons come from the Windows shell**, not hand-drawn glyphs — the same artwork Explorer
+shows, via `app.getFileIcon`: file-association icons, a program's own embedded icon, the
+custom icons on Desktop / Downloads / Pictures, drive icons. The SVG glyphs remain as the
+fallback while a lookup is in flight or when the shell has nothing.
+
+That is only affordable because of how it's cached. Ordinary files are keyed by
+**extension** — a 5,000-file folder costs one lookup per distinct extension, not 5,000.
+Files that carry their own artwork (`.exe`, `.lnk`, `.ico`, `.msi`, …) are keyed by
+**path**, because keying those by extension would give every program the same icon.
+Folders are keyed by path too, which works only because the renderer asks for the rows it
+is about to paint — in a virtualized list that's ~30, never the whole listing.
+
+**The Home tab** is where new tabs start, as in File Explorer: Quick access (your pinned
+places, then the known folders you haven't pinned), drive cards with capacity bars, and
+recently opened files. Alt+Home from anywhere. It lives at the virtual path `onyx:home`,
+so nothing tries to `readDir` it — and anything that needs a real folder (the docked
+shell, the title bar) is handed one instead.
 
 ## The docked terminal
 
