@@ -10,6 +10,7 @@ import type {
   PreviewPayload,
   SearchHit,
   SearchQuery,
+  IconSize,
 } from '../shared/types';
 
 /**
@@ -63,6 +64,11 @@ export interface FsApi {
 
   // --- analysis ---
   preview(path: string): Promise<PreviewPayload>;
+  /** Real Windows shell icons, as PNG data URLs keyed by path. */
+  fileIcons(
+    items: { path: string; isDir: boolean }[],
+    size: IconSize,
+  ): Promise<Record<string, string>>;
   folderSize(path: string): Promise<number>;
   gitStatus(dir: string): Promise<GitStatus | null>;
   /** Start a search; hits stream to `onHit`. Returns a cancel function. */
@@ -215,6 +221,7 @@ export function createBridgeFsApi(): FsApi {
     copyText: (t) => onyx.copyText(t),
 
     preview: (p) => onyx.preview(p),
+    fileIcons: (items, size) => onyx.fileIcons(items, size),
     folderSize: (p) => onyx.folderSize(p),
     gitStatus: (d) => onyx.gitStatus(d),
 

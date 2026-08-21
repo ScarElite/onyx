@@ -8,7 +8,9 @@ import {
   type SortKey,
   type ViewMode,
 } from '../../shared/types';
+import type { FsApi } from '../fs-api';
 import { formatBytes, formatDate, formatKind } from '../lib/format';
+import { useShellIcons } from '../lib/useShellIcons';
 import { Icon, iconForEntry } from './ui';
 
 const ROW_H = 26;
@@ -34,6 +36,7 @@ export interface FileListProps {
   listing: DirListing | null;
   loading: boolean;
   currentPath: string;
+  fsApi: FsApi;
   selection: Set<string>;
   cursor: string | null;
   sortKey: SortKey;
@@ -65,7 +68,7 @@ const COLUMNS: { key: SortKey; label: string; className: string }[] = [
 
 export function FileList(props: FileListProps): React.JSX.Element {
   const {
-    entries, listing, loading, currentPath, selection, cursor, sortKey, sortDir, viewMode,
+    entries, listing, loading, currentPath, fsApi, selection, cursor, sortKey, sortDir, viewMode,
     gitEntries, folderSizes, showFolderSizes, cutPaths, renaming, autoFocus,
     onSelectionChange, onOpen, onSort, onContextMenu, onDropPaths,
     onRenameCommit, onRenameCancel, onFocus,
@@ -132,6 +135,10 @@ export function FileList(props: FileListProps): React.JSX.Element {
     }
     return max;
   }, [entries, folderSizes, showFolderSizes]);
+
+  // Real shell icons for exactly the rows on screen. `visible` is the virtual
+  // window, so this never asks about a row the user cannot see.
+  const shellIcons = useShellIcons(fsApi, visible, grid ? 'large' : 'normal', currentPath);
 
   const scrollTo = useCallback(
     (index: number) => {
@@ -427,6 +434,8 @@ export function FileList(props: FileListProps): React.JSX.Element {
                           e.currentTarget.style.display = 'none';
                         }}
                       />
+                    ) : shellIcons[entry.path] ? (
+                      <img className="tile__shellicon" src={shellIcons[entry.path]} alt="" />
                     ) : (
                       <Icon name={iconForEntry(entry.kind, entry.ext)} size={30} />
                     )}
@@ -448,7 +457,11 @@ export function FileList(props: FileListProps): React.JSX.Element {
             return (
               <div key={entry.path} {...common}>
                 <span className={`row__icon${isDir ? ' row__icon--dir' : ''}`}>
-                  <Icon name={iconForEntry(entry.kind, entry.ext)} />
+                  {shellIcons[entry.path] ? (
+                    <img className="row__shellicon" src={shellIcons[entry.path]} alt="" />
+                  ) : (
+                    <Icon name={iconForEntry(entry.kind, entry.ext)} />
+                  )}
                 </span>
 
                 {git && git !== 'ignored' && <span className={`gitdot gitdot--${git}`} />}

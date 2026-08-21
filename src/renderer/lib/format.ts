@@ -1,4 +1,4 @@
-import type { EntryKind, FsEntry } from '../../shared/types';
+import { HOME_PATH, type EntryKind, type FsEntry } from '../../shared/types';
 
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
 
@@ -54,6 +54,7 @@ export function formatKind(entry: FsEntry): string {
 /** "C:\Users\me\Documents" -> ["C:\", "Users", "me", "Documents"] with paths. */
 export function breadcrumbSegments(p: string): { label: string; path: string }[] {
   if (!p) return [];
+  if (p === HOME_PATH) return [{ label: 'Home', path: HOME_PATH }];
   const uncMatch = /^(\\\\[^\\]+\\[^\\]+)(\\.*)?$/.exec(p);
   let root: string;
   let rest: string;
@@ -75,6 +76,7 @@ export function breadcrumbSegments(p: string): { label: string; path: string }[]
 }
 
 export function basename(p: string): string {
+  if (p === HOME_PATH) return 'Home';
   const cleaned = p.replace(/\\+$/, '');
   const i = cleaned.lastIndexOf('\\');
   return i === -1 ? cleaned : cleaned.slice(i + 1) || cleaned;

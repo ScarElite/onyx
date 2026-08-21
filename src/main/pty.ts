@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as pty from 'node-pty';
-import { normalize } from './fs-service';
+import { isAbsolute, normalize } from './fs-service';
 
 /**
  * The terminal dock's shells — one pty per docked terminal, keyed by pane id.
@@ -149,7 +149,12 @@ export async function startPty(
 
   const shell = await resolveShell(shellOverride);
   const init = await ensureInitScript();
-  const startDir = normalize(cwd);
+  // A caller could hand us a virtual path (Onyx's Home tab) or something that
+  // has since been deleted. ConPTY's failure for that is "error code: 267",
+  // which tells the user nothing, so fall back to somewhere that always exists.
+  const startDir = isAbsolute(normalize(cwd))
+    ? normalize(cwd)
+    : normalize(process.env.USERPROFILE || 'C:\\');
 
   let proc: pty.IPty;
   try {
@@ -226,6 +231,7 @@ export function setPtyCwd(id: string, cwd: string): void {
   const rec = ptys.get(id);
   if (!rec) return;
   const target = normalize(cwd);
+  if (!isAbsolute(target)) return; // virtual path — leave the shell where it is
   if (target.toLowerCase() === rec.cwd.toLowerCase()) return;
   rec.pendingCd = target;
   if (rec.atPrompt) flushPendingCd(id, rec);

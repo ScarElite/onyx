@@ -545,6 +545,10 @@ input {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
+.navbtn--on {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
 .navbtn:disabled {
   opacity: 0.3;
   cursor: default;
@@ -774,6 +778,19 @@ input {
   color: var(--accent);
 }
 
+/* Real Windows shell icons. They are raster and already the right size, so no
+   scaling filter — a 32px icon drawn at 16px goes muddy otherwise. */
+.row__shellicon {
+  width: 16px;
+  height: 16px;
+  image-rendering: -webkit-optimize-contrast;
+}
+.tile__shellicon {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+
 .row__name {
   flex: 1 1 auto;
   /* The name is the point of the row: it never gives up space to the metadata
@@ -956,6 +973,195 @@ input {
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-word;
+}
+
+/* ================================================================== *
+ * Home tab
+ * ================================================================== */
+
+.home {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 22px 26px;
+}
+
+.home__section {
+  margin-bottom: 26px;
+}
+
+.home__heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--accent) 75%, var(--dim-fg));
+}
+
+.home__clear {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--dim-fg);
+}
+.home__clear:hover {
+  color: var(--git-deleted);
+}
+
+.home__empty {
+  margin: 0;
+  color: var(--dim-fg);
+  font-size: 12px;
+}
+
+/* ---- Quick access tiles ---- */
+.home__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
+}
+
+.hometile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px 10px;
+  border: 1px solid transparent;
+  text-align: center;
+  /* Restrained Cyberpunk clipped corner, matching the tab strip. */
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+  background: var(--panel-bg);
+}
+.hometile:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel-bg));
+}
+.hometile__art {
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+.hometile__icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+.hometile__name {
+  font-size: 11.5px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+/* ---- Drive cards ---- */
+.home__drives {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.homedrive {
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  text-align: left;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+.homedrive:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel-bg));
+}
+.homedrive__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+  color: var(--accent);
+}
+.homedrive__label {
+  color: var(--fg);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.homedrive__meta {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--dim-fg);
+}
+
+/* ---- Recent list ---- */
+.home__recent {
+  display: flex;
+  flex-direction: column;
+}
+
+.homerecent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  text-align: left;
+  border-left: 2px solid transparent;
+}
+.homerecent:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-left-color: var(--accent);
+}
+.homerecent__icon {
+  width: 16px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 16px;
+  color: var(--dim-fg);
+}
+.homerecent__name {
+  flex: 0 1 auto;
+  min-width: 90px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.homerecent__dir {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--dim-fg);
+}
+.homerecent__when {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--dim-fg);
+}
+.homerecent--gone {
+  opacity: 0.45;
+  cursor: default;
+}
+.homerecent--gone .homerecent__dir {
+  color: var(--git-deleted);
 }
 
 /* ================================================================== *

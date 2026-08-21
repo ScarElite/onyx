@@ -80,6 +80,8 @@ const bridge: OnyxBridge = {
 
   // --- analysis ---
   preview: (p) => ipcRenderer.invoke(CH.preview, p) as Promise<PreviewPayload>,
+  fileIcons: (items, size) =>
+    ipcRenderer.invoke(CH.fileIcons, items, size) as Promise<Record<string, string>>,
   folderSize: (p) => ipcRenderer.invoke(CH.folderSize, p) as Promise<number>,
   gitStatus: (dir) => ipcRenderer.invoke(CH.gitStatus, dir) as Promise<GitStatus | null>,
   search: (q: SearchQuery) => ipcRenderer.send(CH.search, q),

@@ -1,18 +1,20 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import type {
-  ConflictPolicy,
-  DirListing,
-  DriveInfo,
-  FsEntry,
-  OpProgress,
-  OpResult,
-  PaneLeaf,
-  Place,
-  SessionState,
-  Settings,
-  SortKey,
-  TabState,
-  Theme,
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  HOME_PATH,
+  type ConflictPolicy,
+  type DirListing,
+  type DriveInfo,
+  type FsEntry,
+  type OpProgress,
+  type OpResult,
+  type PaneLeaf,
+  type Place,
+  type RecentItem,
+  type SessionState,
+  type Settings,
+  type SortKey,
+  type TabState,
+  type Theme,
 } from '../shared/types';
 import type { FsApi, TerminalApi } from './fs-api';
 import type { AssistantApi } from './assistant';
@@ -153,7 +155,16 @@ export function Explorer({
     [activeData.entries, activeSelection.paths],
   );
 
-  useEffect(() => onActivePathChange?.(activeLeaf.path), [activeLeaf.path, onActivePathChange]);
+  /**
+   * Home is a virtual path. Anything outside the explorer that expects a real
+   * folder — the title bar, the shell — gets a real one instead.
+   */
+  const activeRealPath = activeLeaf.path === HOME_PATH ? initialPath : activeLeaf.path;
+
+  useEffect(
+    () => onActivePathChange?.(activeLeaf.path === HOME_PATH ? 'Home' : activeLeaf.path),
+    [activeLeaf.path, onActivePathChange],
+  );
 
   /* ---------------------------------------------------------------- *
    * Wiring
@@ -217,6 +228,16 @@ export function Explorer({
     [],
   );
 
+  /**
+   * Holds the latest `remember` so the recent-folders effect below can call it
+   * without listing it as a dependency — `remember` closes over `settings`, so
+   * depending on it would restart the debounce on every unrelated settings
+   * write and the folder would never actually get recorded.
+   */
+  const rememberRef = useRef<(key: 'recentFiles' | 'recentFolders', path: string) => void>(
+    () => undefined,
+  );
+
   const navigate = useCallback(
     (paneId: string, path: string) => {
       patchLeaf(paneId, (leaf) => navigateLeaf(leaf, path));
@@ -225,13 +246,23 @@ export function Explorer({
     [patchLeaf],
   );
 
+  // Record visited folders for Home. Debounced via the effect rather than done
+  // inside navigate(), so arrowing through history doesn't spam the list.
+  useEffect(() => {
+    if (activeLeaf.path === HOME_PATH) return;
+    const timer = setTimeout(() => rememberRef.current('recentFolders', activeLeaf.path), 1500);
+    return () => clearTimeout(timer);
+  }, [activeLeaf.path]);
+
   const newTab = useCallback(
     (path?: string) => {
-      const leaf = makeLeaf(path ?? activeLeaf.path);
+      // A new tab starts at Home rather than cloning the current folder — the
+      // same as File Explorer, and the only default that isn't a guess.
+      const leaf = makeLeaf(path ?? HOME_PATH);
       const tab: TabState = { id: newId('t'), root: leaf, activePaneId: leaf.id };
       setSession((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id }));
     },
-    [activeLeaf.path],
+    [],
   );
 
   const closeTab = useCallback((tabId: string) => {
@@ -320,12 +351,40 @@ export function Explorer({
     [fsApi, choose],
   );
 
+  /** Push onto a recents list, newest first, de-duplicated, capped. */
+  const remember = useCallback(
+    (key: 'recentFiles' | 'recentFolders', path: string) => {
+      if (path === HOME_PATH) return;
+      const item: RecentItem = { path, name: basename(path), at: Date.now() };
+      const rest = (settings[key] ?? []).filter(
+        (r) => r.path.toLowerCase() !== path.toLowerCase(),
+      );
+      onSettingsChange({ [key]: [item, ...rest].slice(0, 60) });
+    },
+    [settings, onSettingsChange],
+  );
+  rememberRef.current = remember;
+
   const openEntry = useCallback(
     async (entry: FsEntry) => {
       const result = await fsApi.open(entry.path);
-      if (!result.ok) flash(result.error ?? `Could not open ${entry.name}`, true);
+      if (!result.ok) {
+        flash(result.error ?? `Could not open ${entry.name}`, true);
+        return;
+      }
+      remember('recentFiles', entry.path);
     },
-    [fsApi, flash],
+    [fsApi, flash, remember],
+  );
+
+  /** Open a bare path (the Home tab's recent list). */
+  const openPath = useCallback(
+    async (path: string) => {
+      const result = await fsApi.open(path);
+      if (!result.ok) flash(result.error ?? `Could not open ${basename(path)}`, true);
+      else remember('recentFiles', path);
+    },
+    [fsApi, flash, remember],
   );
 
   const dropPaths = useCallback(
@@ -513,6 +572,7 @@ export function Explorer({
 
   const commands = useMemo<PaletteItem[]>(() => {
     const items: { label: string; hint?: string; run: () => void }[] = [
+      { label: 'Go Home', hint: 'Alt+Home', run: () => navigate(activeLeaf.id, HOME_PATH) },
       { label: 'New tab', hint: 'Ctrl+T', run: () => newTab() },
       { label: 'Close tab', hint: 'Ctrl+W', run: () => closeTab(activeTab.id) },
       { label: 'Split pane right', hint: 'Ctrl+\\', run: () => splitPane('h') },
@@ -708,6 +768,10 @@ export function Explorer({
 
       if (typing) return;
 
+      if (e.altKey && e.key === 'Home') {
+        e.preventDefault();
+        return navigate(activeLeaf.id, HOME_PATH);
+      }
       if (e.altKey && e.key === 'ArrowLeft') {
         e.preventDefault();
         return patchLeaf(activeLeaf.id, goBack);
@@ -859,6 +923,11 @@ export function Explorer({
       onRenameCommit={(path, name) => void doRenameCommit(path, name)}
       onRenameCancel={() => setRenaming(null)}
       onCloseSearch={() => toggleSearch(leaf.id)}
+      known={known}
+      drives={drives}
+      onOpenPath={(p) => void openPath(p)}
+      onRevealPath={(p) => void fsApi.revealInExplorer(p)}
+      onClearRecent={() => onSettingsChange({ recentFiles: [] })}
       refreshKey={refreshKeys[leaf.id] ?? 0}
       onRefresh={() => setRefreshKeys((k) => ({ ...k, [leaf.id]: (k[leaf.id] ?? 0) + 1 }))}
     />
@@ -917,7 +986,7 @@ export function Explorer({
             // active. Per-pane shells would mean four of them in a quad split.
             key={activeTab.id}
             id={activeTab.id}
-            cwd={activeLeaf.path}
+            cwd={activeRealPath}
             theme={theme}
             fontSize={Math.max(9, theme.font.size + settings.fontSizeOffset)}
             height={settings.terminalHeight}

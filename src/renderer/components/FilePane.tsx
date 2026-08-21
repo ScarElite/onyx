@@ -1,17 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type {
-  DirListing,
-  FsEntry,
-  GitStatus,
-  PaneLeaf,
-  Settings,
-  SortKey,
+import {
+  HOME_PATH,
+  type DirListing,
+  type DriveInfo,
+  type FsEntry,
+  type GitStatus,
+  type PaneLeaf,
+  type Place,
+  type Settings,
+  type SortKey,
 } from '../../shared/types';
 import type { FsApi } from '../fs-api';
 import { breadcrumbSegments } from '../lib/format';
 import { parseFilter } from '../lib/filter';
 import { sortEntries } from '../lib/sort';
 import { FileList } from './FileList';
+import { HomeView } from './HomeView';
 import { SearchPanel } from './SearchPanel';
 import { Icon } from './ui';
 
@@ -50,6 +54,12 @@ export interface FilePaneProps {
   onRenameCommit: (path: string, newName: string) => void;
   onRenameCancel: () => void;
   onCloseSearch: () => void;
+  /** Home tab data — the pane renders <HomeView/> instead of a listing. */
+  known: Place[];
+  drives: DriveInfo[];
+  onOpenPath: (path: string) => void;
+  onRevealPath: (path: string) => void;
+  onClearRecent: () => void;
   /** Bumped to force a re-read (Ctrl+R / the refresh button). */
   refreshKey: number;
   onRefresh: () => void;
@@ -61,7 +71,11 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
     onActivate, onNavigate, onBack, onForward, onUp, onSort, onToggleView, onFilterChange,
     onSelectionChange, onListing, onOpenFile, onContextMenu, onDropPaths,
     onRenameCommit, onRenameCancel, onCloseSearch, refreshKey, onRefresh,
+    known, drives, onOpenPath, onRevealPath, onClearRecent,
   } = props;
+
+  /** Home is a virtual path: nothing below should try to read or watch it. */
+  const isHome = leaf.path === HOME_PATH;
 
   const [listing, setListing] = useState<DirListing | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,6 +99,11 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
   );
 
   useEffect(() => {
+    if (isHome) {
+      setListing(null);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setFolderSizes({});
@@ -107,7 +126,7 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
     };
     // refreshKey is a dependency on purpose: bumping it re-runs this effect,
     // which is exactly what Ctrl+R and the refresh button do.
-  }, [fsApi, leaf.path, load, refreshKey]);
+  }, [fsApi, leaf.path, load, refreshKey, isHome]);
 
   /* ---- git badges arrive after the rows are already painted ---- */
 
@@ -187,6 +206,13 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
       <div className="pane__bar">
         <button
           type="button"
+          className={`navbtn${isHome ? ' navbtn--on' : ''}`}
+          title="Home (Alt+Home)"
+          onClick={() => onNavigate(HOME_PATH)}>
+          <Icon name="star" />
+        </button>
+        <button
+          type="button"
           className="navbtn"
           title="Back (Alt+Left)"
           disabled={leaf.historyIndex <= 0}
@@ -264,7 +290,7 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
         )}
       </div>
 
-      {leaf.filter !== '' || active ? (
+      {!isHome && (leaf.filter !== '' || active) ? (
         <div className="filterbar">
           <span className="filterbar__icon">▸</span>
           <input
@@ -289,7 +315,19 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
         </div>
       ) : null}
 
-      {searchOpen ? (
+      {isHome ? (
+        <HomeView
+          fsApi={fsApi}
+          pinned={settings.pinned}
+          known={known}
+          drives={drives}
+          recentFiles={settings.recentFiles}
+          onNavigate={onNavigate}
+          onOpenFile={onOpenPath}
+          onRevealFile={onRevealPath}
+          onClearRecent={onClearRecent}
+        />
+      ) : searchOpen ? (
         <SearchPanel
           fsApi={fsApi}
           root={leaf.path}
@@ -303,6 +341,7 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
           listing={listing}
           loading={loading}
           currentPath={leaf.path}
+          fsApi={fsApi}
           selection={selectionSet}
           cursor={selection.cursor}
           sortKey={leaf.sortKey}

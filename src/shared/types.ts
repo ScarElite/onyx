@@ -276,6 +276,22 @@ export interface SessionState {
   activeTabId: string;
 }
 
+/**
+ * The Home tab's virtual path. It is not a folder, so nothing ever tries to
+ * readDir or watch it — FilePane renders <HomeView/> instead. Using a `onyx:`
+ * scheme rather than a magic string keeps it impossible to confuse with a real
+ * Windows path, which can never contain a colon outside the drive letter.
+ */
+export const HOME_PATH = 'onyx:home';
+
+/** A file or folder the user recently opened, for the Home tab. */
+export interface RecentItem {
+  path: string;
+  name: string;
+  /** Epoch ms when it was opened. */
+  at: number;
+}
+
 /** A user-pinned sidebar entry. */
 export interface Place {
   name: string;
@@ -318,6 +334,10 @@ export interface Settings {
   /** Optional BRAIN_DEVICE_TOKEN, if the brain is configured to require one. */
   assistantToken?: string;
   pinned: Place[];
+  /** Recently opened files, newest first — shown on the Home tab. */
+  recentFiles: RecentItem[];
+  /** Recently visited folders, newest first. */
+  recentFolders: RecentItem[];
   /** Restored on launch when present. */
   session?: SessionState;
 }
@@ -342,9 +362,14 @@ export const DEFAULT_SETTINGS: Settings = {
   assistantUrl: 'ws://127.0.0.1:8765/ws',
   assistantToken: '',
   pinned: [],
+  recentFiles: [],
+  recentFolders: [],
 };
 
 export type WindowControlAction = 'minimize' | 'maximize' | 'close';
+
+/** Shell icon sizes, mapping to Electron's app.getFileIcon sizes. */
+export type IconSize = 'small' | 'normal' | 'large';
 
 /**
  * URL for a local file served over the `onyx-media:` protocol (registered in
@@ -435,6 +460,14 @@ export interface OnyxBridge {
 
   // --- analysis ---
   preview(path: string): Promise<PreviewPayload>;
+  /**
+   * Real Windows shell icons for a batch of entries, as PNG data URLs keyed by
+   * path. Missing keys mean the shell had nothing — fall back to a glyph.
+   */
+  fileIcons(
+    items: { path: string; isDir: boolean }[],
+    size: IconSize,
+  ): Promise<Record<string, string>>;
   folderSize(path: string): Promise<number>;
   gitStatus(dir: string): Promise<GitStatus | null>;
   search(q: SearchQuery): void;
@@ -522,6 +555,7 @@ export const CH = {
   copyText: 'clip:copyText',
 
   preview: 'an:preview',
+  fileIcons: 'an:fileIcons',
   folderSize: 'an:folderSize',
   gitStatus: 'an:gitStatus',
   search: 'an:search',

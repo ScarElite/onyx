@@ -27,6 +27,7 @@ import {
 import * as fsService from './fs-service';
 import * as ops from './ops';
 import { preview } from './preview';
+import { fileIcons } from './icons';
 import { gitStatus, invalidateGit } from './git';
 import { folderSize, invalidateSize } from './sizes';
 import { cancelAllSearches, cancelSearch, setSearchSinks, startSearch } from './search';
@@ -377,6 +378,7 @@ function registerIpc(): void {
 
   // --- analysis ---
   ipcMain.handle(CH.preview, (_e, p: string) => preview(p));
+  ipcMain.handle(CH.fileIcons, (_e, items, size) => fileIcons(items, size));
   ipcMain.handle(CH.folderSize, (_e, p: string) => folderSize(p));
   ipcMain.handle(CH.gitStatus, (_e, dir: string) => gitStatus(dir));
   ipcMain.on(CH.search, (_e, q) => void startSearch(q));

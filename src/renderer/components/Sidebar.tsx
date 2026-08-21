@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { DriveInfo, Place } from '../../shared/types';
+import { HOME_PATH, type DriveInfo, type Place } from '../../shared/types';
 import { formatBytes } from '../lib/format';
 import { Icon } from './ui';
 
@@ -92,6 +92,16 @@ export function Sidebar({
 
   return (
     <div className="sidebar">
+      <button
+        type="button"
+        className={`place${isCurrent(HOME_PATH) ? ' place--active' : ''}`}
+        style={{ marginTop: 10 }}
+        title="Home — quick access, drives and recent files"
+        onClick={() => onNavigate(HOME_PATH)}>
+        <Icon name="star" />
+        <span className="place__name">Home</span>
+      </button>
+
       <div className="sidebar__section">
         <div className="sidebar__heading">
           <span>Pinned</span>
