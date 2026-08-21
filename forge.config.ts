@@ -1,6 +1,7 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
+import { PublisherGithub } from '@electron-forge/publisher-github';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
@@ -14,9 +15,22 @@ const config: ForgeConfig = {
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({
+      setupIcon: 'assets/icons/onyx.ico',
       setupExe: 'OnyxSetup.exe',
     }),
     new MakerZIP({}, ['darwin']),
+  ],
+  publishers: [
+    // `npm run publish` uploads the Squirrel artifacts (RELEASES, .nupkg,
+    // OnyxSetup.exe) to a GitHub Release tagged v<version>. Installed copies
+    // pull updates from that release via update.electronjs.org, which only
+    // serves PUBLIC repos with published (non-draft) releases.
+    new PublisherGithub({
+      repository: { owner: 'ScarElite', name: 'onyx' },
+      draft: false,
+      prerelease: false,
+      generateReleaseNotes: true,
+    }),
   ],
   plugins: [
     new VitePlugin({

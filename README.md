@@ -110,10 +110,34 @@ npm install          # no native modules, no C++ toolchain needed
 npm start            # dev (Vite + Electron)
 
 npm run typecheck    # tsc --noEmit
-npm run package      # build a runnable app under out/
+npm run lint         # eslint
+npm run package      # a runnable app under out/Onyx-win32-x64/
+npm run make         # OnyxSetup.exe + RELEASES + .nupkg under out/make/
+npm run publish      # upload those to a GitHub Release tagged v<version>
 ```
 
 **Prereqs:** Windows 10 1809+, Node 18+.
+
+### Updates
+
+Installed copies check GitHub Releases on launch and every 10 minutes via
+`update.electronjs.org`, download in the background, and apply on the next launch —
+`notifyUser: false`, because a file manager should never throw a modal over a drag
+you're halfway through. When a version is staged the title bar offers *Update ready —
+restart*. This only works in a **Squirrel-installed** build: run straight from
+`out/Onyx-win32-x64/` and the updater correctly reports "Can not find Squirrel".
+
+To ship one: bump `version` in `package.json`, then `npm run publish`. The repo must
+be public and the release non-draft, or `update.electronjs.org` won't serve it.
+
+### Icon
+
+`assets/icons/onyx.ico` is generated and **committed**, so packaging never depends on
+Python. Regenerate only when the mark changes:
+
+```bash
+python scripts/build-icon.py    # needs Pillow
+```
 
 ## Known limitations
 

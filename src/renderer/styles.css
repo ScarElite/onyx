@@ -201,6 +201,26 @@ input {
   white-space: nowrap;
 }
 
+/* Update pill — only ever shown for 'downloading' and 'ready'. */
+.updatepill {
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--dim-fg);
+  white-space: nowrap;
+}
+.updatepill--ready {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px -4px color-mix(in srgb, var(--accent) calc(80% * var(--hub-glow-strength)), transparent);
+}
+.updatepill--ready:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 .titlebar__controls {
   display: flex;
   -webkit-app-region: no-drag;

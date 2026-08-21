@@ -1,10 +1,28 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, net, protocol, shell } from 'electron';
+import {
+  app,
+  autoUpdater,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  net,
+  protocol,
+  shell,
+} from 'electron';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
+import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 
-import { CH, type FsEvent, type OpProgress, type SearchHit, type Settings } from '../shared/types';
+import {
+  CH,
+  type FsEvent,
+  type OpProgress,
+  type SearchHit,
+  type Settings,
+  type UpdateStatus,
+} from '../shared/types';
 import * as fsService from './fs-service';
 import * as ops from './ops';
 import { preview } from './preview';
@@ -15,6 +33,15 @@ import { loadSettings, saveSettings } from './settings';
 
 // Squirrel fires this on install/update shortcut creation; quit immediately.
 if (started) app.quit();
+
+/**
+ * One Onyx per machine. Two processes would each own a copy of the settings
+ * file and clobber the other's saved session on every debounced write — the
+ * failure mode being "my tabs keep resetting", which is miserable to diagnose.
+ * A second launch focuses the window that already exists instead.
+ */
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) app.quit();
 
 /**
  * Media (images, video, audio, PDF) reaches the renderer over this scheme rather
@@ -31,6 +58,49 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow: BrowserWindow | null = null;
+
+/* ------------------------------------------------------------------ *
+ * Auto-update
+ * ------------------------------------------------------------------ */
+
+/**
+ * Silent background updates from GitHub Releases, via update.electronjs.org —
+ * the same arrangement Conduit uses. `notifyUser: false` suppresses the native
+ * restart prompt: a file manager should never throw a modal over a drag you are
+ * halfway through. The staged version takes over on the next launch, and the UI
+ * offers an explicit "restart now" instead.
+ *
+ * No-ops in dev (unpackaged) builds and in a losing second instance.
+ */
+if (gotSingleInstanceLock) {
+  updateElectronApp({
+    updateSource: { type: UpdateSourceType.ElectronPublicUpdateService, repo: 'ScarElite/onyx' },
+    notifyUser: false,
+  });
+}
+
+let updateStatus: UpdateStatus = { phase: app.isPackaged ? 'idle' : 'unsupported' };
+
+function setUpdateStatus(next: UpdateStatus): void {
+  updateStatus = next;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(CH.updateStatus, next);
+  }
+}
+
+// updateElectronApp owns the schedule; these listeners just observe the shared
+// autoUpdater singleton so the title bar can show what it is doing.
+if (gotSingleInstanceLock && app.isPackaged) {
+  autoUpdater.on('checking-for-update', () => setUpdateStatus({ phase: 'checking' }));
+  autoUpdater.on('update-available', () => setUpdateStatus({ phase: 'downloading' }));
+  autoUpdater.on('update-not-available', () => setUpdateStatus({ phase: 'uptodate' }));
+  autoUpdater.on('update-downloaded', (_e, _notes, releaseName) =>
+    setUpdateStatus({ phase: 'ready', version: releaseName || undefined }),
+  );
+  autoUpdater.on('error', (err) =>
+    setUpdateStatus({ phase: 'error', message: err?.message || 'update failed' }),
+  );
+}
 
 /* ------------------------------------------------------------------ *
  * Window
@@ -149,6 +219,14 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+// Someone launched Onyx again (Start menu, a shortcut, "open folder in Onyx").
+// Surface the window we already have rather than starting a rival process.
+app.on('second-instance', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
 });
 
 app.on('window-all-closed', () => {
@@ -288,6 +366,29 @@ function registerIpc(): void {
     return res.canceled || !res.filePaths[0] ? null : fsService.normalize(res.filePaths[0]);
   });
   ipcMain.handle(CH.appVersion, () => app.getVersion());
+
+  // --- auto-update ---
+  ipcMain.handle(CH.checkForUpdate, () => {
+    if (!app.isPackaged) return updateStatus; // dev build: 'unsupported'
+    // Don't stack a second check on top of one already running (ours or the
+    // scheduled one) — autoUpdater is a singleton and would error.
+    if (updateStatus.phase !== 'checking' && updateStatus.phase !== 'downloading') {
+      try {
+        autoUpdater.checkForUpdates();
+      } catch (e) {
+        setUpdateStatus({
+          phase: 'error',
+          message: e instanceof Error ? e.message : 'update check failed',
+        });
+      }
+    }
+    return updateStatus;
+  });
+
+  ipcMain.on(CH.restartToUpdate, () => {
+    // Only meaningful once a downloaded update is staged.
+    if (updateStatus.phase === 'ready') autoUpdater.quitAndInstall();
+  });
 
   ipcMain.on(CH.windowControl, (_e, action: string) => {
     if (!mainWindow) return;

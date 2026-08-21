@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Settings } from '../shared/types';
+import type { Settings, UpdateStatus } from '../shared/types';
 import { Explorer } from './Explorer';
 import { createBridgeFsApi } from './fs-api';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -20,6 +20,7 @@ export function App(): React.JSX.Element {
   const [maximized, setMaximized] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activePath, setActivePath] = useState('');
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
 
   /* ---- boot ---- */
 
@@ -36,6 +37,15 @@ export function App(): React.JSX.Element {
   }, []);
 
   useEffect(() => window.onyx.onWindowState(setMaximized), []);
+
+  // The updater runs itself on a schedule; this just mirrors what it's doing.
+  // Nothing is shown for 'idle'/'checking'/'uptodate' — a file manager should
+  // not narrate its own background chores.
+  useEffect(() => {
+    const stop = window.onyx.onUpdateStatus(setUpdate);
+    void window.onyx.checkForUpdate().then(setUpdate);
+    return stop;
+  }, []);
 
   /* ---- theme ---- */
 
@@ -96,6 +106,16 @@ export function App(): React.JSX.Element {
         </div>
         <div className="titlebar__spacer" />
         <div className="titlebar__status" title={activePath}>
+          {update?.phase === 'downloading' && <span className="updatepill">Updating…</span>}
+          {update?.phase === 'ready' && (
+            <button
+              type="button"
+              className="updatepill updatepill--ready"
+              title={`Version ${update.version ?? 'new'} is staged. Click to restart into it now; otherwise it applies on the next launch.`}
+              onClick={() => window.onyx.restartToUpdate()}>
+              Update ready — restart
+            </button>
+          )}
           <span>{activePath}</span>
         </div>
         <div className="titlebar__controls">

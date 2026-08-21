@@ -14,6 +14,7 @@ import {
   type SearchHit,
   type SearchQuery,
   type Settings,
+  type UpdateStatus,
   type WindowControlAction,
 } from '../shared/types';
 
@@ -108,6 +109,12 @@ const bridge: OnyxBridge = {
   setOpacity: (v) => ipcRenderer.send(CH.setOpacity, v),
   onWindowState: (cb: (maximized: boolean) => void) => subscribe<[boolean]>(CH.windowState, cb),
   getAppVersion: () => ipcRenderer.invoke(CH.appVersion) as Promise<string>,
+
+  // --- auto-update ---
+  checkForUpdate: () => ipcRenderer.invoke(CH.checkForUpdate) as Promise<UpdateStatus>,
+  onUpdateStatus: (cb: (status: UpdateStatus) => void) =>
+    subscribe<[UpdateStatus]>(CH.updateStatus, cb),
+  restartToUpdate: () => ipcRenderer.send(CH.restartToUpdate),
 };
 
 contextBridge.exposeInMainWorld('onyx', bridge);
