@@ -25,13 +25,15 @@ export interface FsEntry {
   system: boolean;
   readonly: boolean;
   /**
-   * The entry lives under a cloud-sync root (OneDrive), so its content may be a
-   * placeholder: present in the listing but not on disk, where reading it
-   * silently triggers a download. Content search skips these. See §9.6.
+   * The entry lives under a cloud-sync root (OneDrive), so its content *may* be
+   * a placeholder that downloads on read.
    *
-   * NOT surfaced in the UI: without the real reparse tag (which needs a native
-   * module) this is a path prefix test, so inside a synced tree it is true for
-   * every file — a badge on all of them would carry no information.
+   * Informational only — nothing branches on it. It is a path-prefix test, not a
+   * hydration check: inside a synced tree it is true for every file, so it can
+   * neither drive a badge (no information) nor gate content search (that just
+   * disabled search across the whole tree). Detecting real placeholders needs
+   * the FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS reparse tag, which Node does not
+   * expose. `stat` never hydrates, so sizes and dates are always accurate.
    */
   placeholder: boolean;
   /** stat() failed (EPERM/EACCES, or a delete raced us). Render as dimmed. */
@@ -339,6 +341,19 @@ export const DEFAULT_SETTINGS: Settings = {
 export type WindowControlAction = 'minimize' | 'maximize' | 'close';
 
 /**
+ * URL for a local file served over the `onyx-media:` protocol (registered in
+ * main.ts). Defined here so the main process (preview payloads) and the renderer
+ * (grid thumbnails) build it identically.
+ *
+ * `file:` is not an option: in dev the renderer's origin is the Vite dev server
+ * and Chromium blocks a cross-origin file: fetch whatever the CSP says. This
+ * scheme also streams range requests, so video scrubbing works.
+ */
+export function mediaUrl(absolutePath: string): string {
+  return `onyx-media://f/?p=${encodeURIComponent(absolutePath)}`;
+}
+
+/**
  * Auto-update state, streamed main -> renderer. The updater downloads in the
  * background; 'ready' means the new version is staged and applies on the next
  * launch (or immediately via restartToUpdate()).
@@ -391,6 +406,8 @@ export interface OnyxBridge {
   open(path: string): Promise<OpResult>;
   revealInExplorer(path: string): Promise<OpResult>;
   openTerminalAt(path: string): Promise<OpResult>;
+  /** Names in `destDir` that `srcs` would collide with — ask before copying. */
+  conflicts(srcs: string[], destDir: string): Promise<string[]>;
   copy(srcs: string[], destDir: string, policy: ConflictPolicy): Promise<OpResult>;
   move(srcs: string[], destDir: string, policy: ConflictPolicy): Promise<OpResult>;
   rename(path: string, newName: string): Promise<OpResult>;
@@ -481,6 +498,7 @@ export const CH = {
   open: 'op:open',
   reveal: 'op:reveal',
   openTerminal: 'op:openTerminal',
+  conflicts: 'op:conflicts',
   copy: 'op:copy',
   move: 'op:move',
   rename: 'op:rename',

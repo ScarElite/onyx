@@ -1,10 +1,33 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DirListing, FsEntry, GitFileStatus, SortDir, SortKey } from '../../shared/types';
+import {
+  mediaUrl,
+  type DirListing,
+  type FsEntry,
+  type GitFileStatus,
+  type SortDir,
+  type SortKey,
+  type ViewMode,
+} from '../../shared/types';
 import { formatBytes, formatDate, formatKind } from '../lib/format';
 import { Icon, iconForEntry } from './ui';
 
 const ROW_H = 26;
 const OVERSCAN = 8;
+
+/** Grid tile footprint, including its label. */
+const TILE_W = 124;
+const TILE_H = 104;
+
+/**
+ * Extensions worth drawing a real thumbnail for. Everything else gets its glyph.
+ *
+ * These DO load for cloud-synced files, unlike content search and folder sizing:
+ * the distinction is bulk background reads (which can silently pull gigabytes
+ * out of OneDrive) versus a folder the user is looking at right now, where
+ * Explorer would show thumbnails too. Only visible tiles mount, so the cost is
+ * bounded by the viewport rather than the folder.
+ */
+const THUMBNAIL_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'avif', 'svg']);
 
 export interface FileListProps {
   entries: FsEntry[];
@@ -15,6 +38,7 @@ export interface FileListProps {
   cursor: string | null;
   sortKey: SortKey;
   sortDir: SortDir;
+  viewMode: ViewMode;
   gitEntries: Record<string, GitFileStatus> | null;
   folderSizes: Record<string, number>;
   showFolderSizes: boolean;
@@ -30,8 +54,6 @@ export interface FileListProps {
   onRenameCommit: (path: string, newName: string) => void;
   onRenameCancel: () => void;
   onFocus: () => void;
-  /** Bubbled up so the pane can own shortcuts that aren't list navigation. */
-  onKeyDown?: (e: React.KeyboardEvent) => void;
 }
 
 const COLUMNS: { key: SortKey; label: string; className: string }[] = [
@@ -43,15 +65,16 @@ const COLUMNS: { key: SortKey; label: string; className: string }[] = [
 
 export function FileList(props: FileListProps): React.JSX.Element {
   const {
-    entries, listing, loading, currentPath, selection, cursor, sortKey, sortDir,
+    entries, listing, loading, currentPath, selection, cursor, sortKey, sortDir, viewMode,
     gitEntries, folderSizes, showFolderSizes, cutPaths, renaming, autoFocus,
     onSelectionChange, onOpen, onSort, onContextMenu, onDropPaths,
-    onRenameCommit, onRenameCancel, onFocus, onKeyDown,
+    onRenameCommit, onRenameCancel, onFocus,
   } = props;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportH, setViewportH] = useState(600);
+  const [viewportW, setViewportW] = useState(900);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   /** Anchor for shift-click ranges — the last row selected without shift. */
   const anchorRef = useRef<string | null>(null);
@@ -60,9 +83,13 @@ export function FileList(props: FileListProps): React.JSX.Element {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setViewportH(el.clientHeight));
+    const measure = () => {
+      setViewportH(el.clientHeight);
+      setViewportW(el.clientWidth);
+    };
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    setViewportH(el.clientHeight);
+    measure();
     return () => ro.disconnect();
   }, []);
 
@@ -82,9 +109,17 @@ export function FileList(props: FileListProps): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const first = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
-  const last = Math.min(entries.length, Math.ceil((scrollTop + viewportH) / ROW_H) + OVERSCAN);
+  const grid = viewMode === 'grid';
+  const columns = grid ? Math.max(1, Math.floor(viewportW / TILE_W)) : 1;
+  const cellH = grid ? TILE_H : ROW_H;
+  // In grid mode the virtual window is measured in ROWS OF TILES, so `first`
+  // and `last` stay entry indexes and the rest of the component is unchanged.
+  const firstRow = Math.max(0, Math.floor(scrollTop / cellH) - OVERSCAN);
+  const lastRow = Math.ceil((scrollTop + viewportH) / cellH) + OVERSCAN;
+  const first = firstRow * columns;
+  const last = Math.min(entries.length, lastRow * columns);
   const visible = entries.slice(first, last);
+  const canvasH = Math.ceil(entries.length / columns) * cellH;
 
   /** Largest folder in this listing — the denominator for the size heat bars. */
   const maxFolderSize = useMemo(() => {
@@ -98,15 +133,18 @@ export function FileList(props: FileListProps): React.JSX.Element {
     return max;
   }, [entries, folderSizes, showFolderSizes]);
 
-  const scrollTo = useCallback((index: number) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const top = index * ROW_H;
-    if (top < el.scrollTop) el.scrollTo({ top });
-    else if (top + ROW_H > el.scrollTop + el.clientHeight) {
-      el.scrollTo({ top: top + ROW_H - el.clientHeight });
-    }
-  }, []);
+  const scrollTo = useCallback(
+    (index: number) => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const top = Math.floor(index / columns) * cellH;
+      if (top < el.scrollTop) el.scrollTo({ top });
+      else if (top + cellH > el.scrollTop + el.clientHeight) {
+        el.scrollTo({ top: top + cellH - el.clientHeight });
+      }
+    },
+    [columns, cellH],
+  );
 
   /* ---- selection ---- */
 
@@ -177,15 +215,22 @@ export function FileList(props: FileListProps): React.JSX.Element {
       scrollTo(next);
     };
 
+    const page = Math.max(1, Math.floor(viewportH / cellH) - 1) * columns;
+
     switch (e.key) {
       case 'ArrowDown':
-        return move(1);
+        // One row down means +columns in a grid, +1 in a list.
+        return move(columns);
       case 'ArrowUp':
-        return move(-1);
+        return move(-columns);
+      case 'ArrowRight':
+        return grid ? move(1) : undefined;
+      case 'ArrowLeft':
+        return grid ? move(-1) : undefined;
       case 'PageDown':
-        return move(Math.max(1, Math.floor(viewportH / ROW_H) - 1));
+        return move(page);
       case 'PageUp':
-        return move(-Math.max(1, Math.floor(viewportH / ROW_H) - 1));
+        return move(-page);
       case 'Home':
         return move(-entries.length);
       case 'End':
@@ -208,7 +253,6 @@ export function FileList(props: FileListProps): React.JSX.Element {
       default:
         break;
     }
-    onKeyDown?.(e);
   };
 
   /* ---- drag & drop ---- */
@@ -272,6 +316,7 @@ export function FileList(props: FileListProps): React.JSX.Element {
 
   return (
     <div className="list">
+      {!grid && (
       <div className="list__head">
         <span className="row__icon" />
         {COLUMNS.map((col) => (
@@ -288,6 +333,7 @@ export function FileList(props: FileListProps): React.JSX.Element {
           </button>
         ))}
       </div>
+      )}
 
       <div
         ref={scrollRef}
@@ -318,7 +364,7 @@ export function FileList(props: FileListProps): React.JSX.Element {
           <div className="list__empty">This folder is empty</div>
         )}
 
-        <div className="list__spacer" style={{ height: entries.length * ROW_H }}>
+        <div className="list__spacer" style={{ height: canvasH }}>
           {visible.map((entry, i) => {
             const index = first + i;
             const isDir = entry.kind === 'dir' || entry.kind === 'junction';
@@ -329,30 +375,78 @@ export function FileList(props: FileListProps): React.JSX.Element {
                 ? Math.max(2, Math.round((size / maxFolderSize) * 100))
                 : 0;
 
-            const classes = ['row'];
-            if (index % 2 === 1) classes.push('row--alt');
-            if (selection.has(entry.path)) classes.push('row--selected');
-            if (cursor === entry.path) classes.push('row--cursor');
+            const classes = [grid ? 'tile' : 'row'];
+            if (!grid && index % 2 === 1) classes.push('row--alt');
+            if (selection.has(entry.path)) classes.push(grid ? 'tile--selected' : 'row--selected');
+            if (cursor === entry.path) classes.push(grid ? 'tile--cursor' : 'row--cursor');
             if (cutPaths.has(entry.path)) classes.push('row--cut');
             if (entry.hidden) classes.push('row--hidden');
             if (entry.inaccessible) classes.push('row--inaccessible');
             if (git === 'ignored') classes.push('row--ignored');
-            if (dropTarget === entry.path) classes.push('row--droptarget');
+            if (dropTarget === entry.path) classes.push(grid ? 'tile--droptarget' : 'row--droptarget');
+
+            const position = grid
+              ? {
+                  top: Math.floor(index / columns) * TILE_H,
+                  left: (index % columns) * TILE_W,
+                  width: TILE_W,
+                  height: TILE_H,
+                }
+              : { top: index * ROW_H };
+
+            const common = {
+              className: classes.join(' '),
+              style: position,
+              draggable: true,
+              onDragStart: (e: React.DragEvent) => handleDragStart(e, entry),
+              onDragOver: (e: React.DragEvent) =>
+                isDir ? allowDrop(e, entry.path) : allowDrop(e, null),
+              onDragLeave: () => setDropTarget(null),
+              onDrop: (e: React.DragEvent) => handleDrop(e, isDir ? entry.path : currentPath),
+              onMouseDown: (e: React.MouseEvent) => handleRowMouseDown(e, entry, index),
+              onMouseUp: (e: React.MouseEvent) => handleRowMouseUp(e, entry),
+              onDoubleClick: () => onOpen(entry),
+              onContextMenu: (e: React.MouseEvent) => onContextMenu(e, entry),
+            };
+
+            if (grid) {
+              const thumb = entry.kind === 'file' && THUMBNAIL_EXT.has(entry.ext);
+              return (
+                <div key={entry.path} {...common} title={entry.name}>
+                  <div className={`tile__art${isDir ? ' tile__art--dir' : ''}`}>
+                    {thumb ? (
+                      <img
+                        className="tile__thumb"
+                        src={mediaUrl(entry.path)}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        // A corrupt or unreadable image must fall back to the
+                        // glyph rather than leave a broken-image box.
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <Icon name={iconForEntry(entry.kind, entry.ext)} size={30} />
+                    )}
+                    {git && git !== 'ignored' && <span className={`gitdot gitdot--${git}`} />}
+                  </div>
+                  {renaming === entry.path ? (
+                    <RenameInput
+                      initial={entry.name}
+                      onCommit={(name) => onRenameCommit(entry.path, name)}
+                      onCancel={onRenameCancel}
+                    />
+                  ) : (
+                    <div className="tile__name">{entry.name}</div>
+                  )}
+                </div>
+              );
+            }
 
             return (
-              <div
-                key={entry.path}
-                className={classes.join(' ')}
-                style={{ top: index * ROW_H }}
-                draggable
-                onDragStart={(e) => handleDragStart(e, entry)}
-                onDragOver={(e) => (isDir ? allowDrop(e, entry.path) : allowDrop(e, null))}
-                onDragLeave={() => setDropTarget(null)}
-                onDrop={(e) => handleDrop(e, isDir ? entry.path : currentPath)}
-                onMouseDown={(e) => handleRowMouseDown(e, entry, index)}
-                onMouseUp={(e) => handleRowMouseUp(e, entry)}
-                onDoubleClick={() => onOpen(entry)}
-                onContextMenu={(e) => onContextMenu(e, entry)}>
+              <div key={entry.path} {...common}>
                 <span className={`row__icon${isDir ? ' row__icon--dir' : ''}`}>
                   <Icon name={iconForEntry(entry.kind, entry.ext)} />
                 </span>
@@ -372,7 +466,7 @@ export function FileList(props: FileListProps): React.JSX.Element {
                 )}
 
                 <span className="row__col col-size sizebar">
-                  {isDir ? (size ? formatBytes(size) : '—') : formatBytes(entry.size)}
+                  {isDir ? (size ? formatBytes(size) : '\u2014') : formatBytes(entry.size)}
                   {heat > 0 && <span className="sizebar__fill" style={{ width: `${heat}%` }} />}
                 </span>
                 <span className="row__col col-modified">{formatDate(entry.modified)}</span>

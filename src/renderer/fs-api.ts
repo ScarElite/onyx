@@ -42,6 +42,8 @@ export interface FsApi {
   open(path: string): Promise<OpResult>;
   revealInExplorer(path: string): Promise<OpResult>;
   openTerminalAt(path: string): Promise<OpResult>;
+  /** Names in `destDir` that `srcs` would collide with — ask before copying. */
+  conflicts(srcs: string[], destDir: string): Promise<string[]>;
   copy(srcs: string[], destDir: string, policy: ConflictPolicy): Promise<OpResult>;
   move(srcs: string[], destDir: string, policy: ConflictPolicy): Promise<OpResult>;
   rename(path: string, newName: string): Promise<OpResult>;
@@ -195,6 +197,7 @@ export function createBridgeFsApi(): FsApi {
     open: (p) => onyx.open(p),
     revealInExplorer: (p) => onyx.revealInExplorer(p),
     openTerminalAt: (p) => onyx.openTerminalAt(p),
+    conflicts: (s, d) => onyx.conflicts(s, d),
     copy: (s, d, policy) => onyx.copy(s, d, policy),
     move: (s, d, policy) => onyx.move(s, d, policy),
     rename: (p, n) => onyx.rename(p, n),

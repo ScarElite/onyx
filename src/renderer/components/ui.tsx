@@ -238,7 +238,24 @@ interface ConfirmRequest {
   danger?: boolean;
 }
 
-type Request = (AskRequest | ConfirmRequest) & { resolve: (v: never) => void };
+export interface Choice {
+  id: string;
+  label: string;
+  primary?: boolean;
+  danger?: boolean;
+  /** Shown under the label — say what the choice actually does to the files. */
+  hint?: string;
+}
+
+interface ChooseRequest {
+  kind: 'choose';
+  title: string;
+  message: string;
+  items?: string[];
+  choices: Choice[];
+}
+
+type Request = (AskRequest | ConfirmRequest | ChooseRequest) & { resolve: (v: never) => void };
 
 /**
  * `const { ask, confirm, node } = useDialogs()` — await a modal instead of
@@ -247,6 +264,8 @@ type Request = (AskRequest | ConfirmRequest) & { resolve: (v: never) => void };
 export function useDialogs(): {
   ask: (req: Omit<AskRequest, 'kind'>) => Promise<string | null>;
   confirm: (req: Omit<ConfirmRequest, 'kind'>) => Promise<boolean>;
+  /** Resolves to the chosen `Choice.id`, or null if dismissed. */
+  choose: (req: Omit<ChooseRequest, 'kind'>) => Promise<string | null>;
   node: React.ReactNode;
 } {
   const [request, setRequest] = useState<Request | null>(null);
@@ -263,6 +282,14 @@ export function useDialogs(): {
     (req: Omit<ConfirmRequest, 'kind'>) =>
       new Promise<boolean>((resolve) => {
         setRequest({ ...req, kind: 'confirm', resolve: resolve as (v: never) => void });
+      }),
+    [],
+  );
+
+  const choose = useCallback(
+    (req: Omit<ChooseRequest, 'kind'>) =>
+      new Promise<string | null>((resolve) => {
+        setRequest({ ...req, kind: 'choose', resolve: resolve as (v: never) => void });
       }),
     [],
   );
@@ -310,7 +337,52 @@ export function useDialogs(): {
     );
   }
 
-  return { ask, confirm, node };
+  if (request?.kind === 'choose') {
+    node = (
+      <Modal
+        title={request.title}
+        onClose={() => finish(null)}
+        footer={
+          <>
+            <button type="button" className="btn" onClick={() => finish(null)}>
+              Cancel
+            </button>
+            {request.choices.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`btn${c.primary ? ' btn--primary' : ''}${c.danger ? ' btn--danger' : ''}`}
+                title={c.hint}
+                onClick={() => finish(c.id)}>
+                {c.label}
+              </button>
+            ))}
+          </>
+        }>
+        <p className="modal__message">{request.message}</p>
+        {request.items && request.items.length > 0 && (
+          <ul className="modal__list">
+            {request.items.slice(0, 40).map((it) => (
+              <li key={it}>{it}</li>
+            ))}
+            {request.items.length > 40 && <li>…and {request.items.length - 40} more</li>}
+          </ul>
+        )}
+        <dl className="preview__meta" style={{ border: 'none', padding: 0 }}>
+          {request.choices
+            .filter((c) => c.hint)
+            .map((c) => (
+              <React.Fragment key={c.id}>
+                <dt>{c.label}</dt>
+                <dd>{c.hint}</dd>
+              </React.Fragment>
+            ))}
+        </dl>
+      </Modal>
+    );
+  }
+
+  return { ask, confirm, choose, node };
 }
 
 function AskDialog({

@@ -57,6 +57,7 @@ const bridge: OnyxBridge = {
   open: (p) => ipcRenderer.invoke(CH.open, p) as Promise<OpResult>,
   revealInExplorer: (p) => ipcRenderer.invoke(CH.reveal, p) as Promise<OpResult>,
   openTerminalAt: (p) => ipcRenderer.invoke(CH.openTerminal, p) as Promise<OpResult>,
+  conflicts: (srcs, dest) => ipcRenderer.invoke(CH.conflicts, srcs, dest) as Promise<string[]>,
   copy: (srcs, dest, policy: ConflictPolicy) =>
     ipcRenderer.invoke(CH.copy, srcs, dest, policy) as Promise<OpResult>,
   move: (srcs, dest, policy: ConflictPolicy) =>

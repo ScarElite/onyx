@@ -1,24 +1,10 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { PreviewKind, PreviewPayload } from '../shared/types';
+import { mediaUrl, type PreviewKind, type PreviewPayload } from '../shared/types';
 import { describeError, normalize } from './fs-service';
 
 /** Read cap for text previews — enough to read, small enough to stay instant. */
 const TEXT_CAP = 256 * 1024;
-
-/**
- * Media is served to the renderer through the `onyx-media:` protocol (registered
- * in main.ts) rather than a `file:` URL or an inlined data: URL.
- *
- * `file:` does not work: in dev the renderer's origin is the Vite dev server, and
- * Chromium blocks a cross-origin file: fetch no matter what the CSP says.
- * Inlining as base64 does work but costs a full read plus a 33% size penalty for
- * every preview — fatal for a 200MB video. A custom protocol has neither problem
- * and streams range requests, so scrubbing a video works.
- */
-export function mediaUrl(p: string): string {
-  return `onyx-media://f/?p=${encodeURIComponent(p)}`;
-}
 
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'avif', 'svg']);
 /** Only formats Chromium can actually decode — no mkv/avi/wmv false promises. */

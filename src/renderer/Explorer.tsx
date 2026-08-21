@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
+  ConflictPolicy,
   DirListing,
   DriveInfo,
   FsEntry,
@@ -96,7 +97,9 @@ export function Explorer({
   const [drives, setDrives] = useState<DriveInfo[]>([]);
   const [known, setKnown] = useState<Place[]>([]);
 
-  const { ask, confirm, node: dialogNode } = useDialogs();
+  const { ask, confirm, choose, node: dialogNode } = useDialogs();
+  /** Bumped per pane by Ctrl+R (or the refresh button) to force a re-read. */
+  const [refreshKeys, setRefreshKeys] = useState<Record<string, number>>({});
 
   /**
    * Ctrl+F focuses the active pane's filter input. The input is found in the DOM
@@ -270,6 +273,32 @@ export function Explorer({
    * File operations
    * ---------------------------------------------------------------- */
 
+  /**
+   * Decide what happens to files that already exist at the destination.
+   *
+   * Asked UP FRONT rather than mid-operation: a prompt halfway through a copy
+   * would leave a half-finished result behind if the user cancelled. When
+   * nothing collides the user is never bothered at all.
+   */
+  const resolvePolicy = useCallback(
+    async (srcs: string[], destDir: string, verb: string): Promise<ConflictPolicy | null> => {
+      const clashes = await fsApi.conflicts(srcs, destDir);
+      if (clashes.length === 0) return 'keepBoth';
+      const answer = await choose({
+        title: `${clashes.length} item${clashes.length === 1 ? '' : 's'} already there`,
+        message: `${basename(destDir)} already contains these. What should ${verb} do?`,
+        items: clashes,
+        choices: [
+          { id: 'keepBoth', label: 'Keep both', primary: true, hint: 'Adds " (2)" to the incoming copy. Nothing is lost.' },
+          { id: 'skip', label: 'Skip', hint: 'Leaves the existing files alone and transfers only the rest.' },
+          { id: 'overwrite', label: 'Overwrite', danger: true, hint: 'Replaces the existing files. This cannot be undone.' },
+        ],
+      });
+      return (answer as ConflictPolicy | null) ?? null;
+    },
+    [fsApi, choose],
+  );
+
   const openEntry = useCallback(
     async (entry: FsEntry) => {
       const result = await fsApi.open(entry.path);
@@ -280,14 +309,14 @@ export function Explorer({
 
   const dropPaths = useCallback(
     async (paths: string[], destDir: string, copy: boolean) => {
-      // 'keepBoth' rather than 'ask': a drag-and-drop that silently overwrites is
-      // the single most destructive thing a file manager can do.
+      const policy = await resolvePolicy(paths, destDir, copy ? 'the copy' : 'the move');
+      if (!policy) return; // dismissed
       const result = copy
-        ? await fsApi.copy(paths, destDir, 'keepBoth')
-        : await fsApi.move(paths, destDir, 'keepBoth');
+        ? await fsApi.copy(paths, destDir, policy)
+        : await fsApi.move(paths, destDir, policy);
       report(result, `${copy ? 'Copied' : 'Moved'} ${paths.length} to ${basename(destDir)}`);
     },
-    [fsApi, report],
+    [fsApi, report, resolvePolicy],
   );
 
   const doCopy = useCallback(() => {
@@ -310,12 +339,14 @@ export function Explorer({
       flash('Clipboard is empty', true);
       return;
     }
+    const policy = await resolvePolicy(clip.paths, activeLeaf.path, 'the paste');
+    if (!policy) return;
     const result = clip.cut
-      ? await fsApi.move(clip.paths, activeLeaf.path, 'keepBoth')
-      : await fsApi.copy(clip.paths, activeLeaf.path, 'keepBoth');
+      ? await fsApi.move(clip.paths, activeLeaf.path, policy)
+      : await fsApi.copy(clip.paths, activeLeaf.path, policy);
     if (clip.cut) setCutPaths(new Set());
     report(result, `${clip.cut ? 'Moved' : 'Copied'} ${clip.paths.length} item(s) here`);
-  }, [fsApi, activeLeaf.path, report, flash]);
+  }, [fsApi, activeLeaf.path, report, flash, resolvePolicy]);
 
   const doDelete = useCallback(
     async (permanent: boolean) => {
@@ -399,15 +430,21 @@ export function Explorer({
       if (activeSelection.paths.length === 0) return;
       const sibling = findLeaf(activeTab.root, siblingId);
       if (!sibling) return;
+      const policy = await resolvePolicy(
+        activeSelection.paths,
+        sibling.path,
+        copy ? 'the copy' : 'the move',
+      );
+      if (!policy) return;
       const result = copy
-        ? await fsApi.copy(activeSelection.paths, sibling.path, 'keepBoth')
-        : await fsApi.move(activeSelection.paths, sibling.path, 'keepBoth');
+        ? await fsApi.copy(activeSelection.paths, sibling.path, policy)
+        : await fsApi.move(activeSelection.paths, sibling.path, policy);
       report(
         result,
         `${copy ? 'Copied' : 'Moved'} ${activeSelection.paths.length} to ${basename(sibling.path)}`,
       );
     },
-    [activeTab.root, activeLeaf.id, activeSelection.paths, fsApi, report, flash],
+    [activeTab.root, activeLeaf.id, activeSelection.paths, fsApi, report, flash, resolvePolicy],
   );
 
   const pinCurrent = useCallback(() => {
@@ -463,6 +500,14 @@ export function Explorer({
       { label: 'New folder', hint: 'Ctrl+N', run: () => void doNewFolder() },
       { label: 'New file', run: () => void doNewFile() },
       { label: 'Search in this folder', hint: 'Ctrl+Shift+F', run: () => toggleSearch(activeLeaf.id) },
+      {
+        label: `Switch to ${activeLeaf.viewMode === 'grid' ? 'details' : 'grid'} view`,
+        run: () =>
+          patchLeaf(activeLeaf.id, (l) => ({
+            ...l,
+            viewMode: l.viewMode === 'grid' ? 'details' : 'grid',
+          })),
+      },
       { label: 'Batch rename selection', hint: 'Shift+F2', run: () => setBatchTargets(selectedEntries) },
       { label: 'Copy paths to clipboard', run: () => fsApi.copyText(activeSelection.paths.join('\r\n')) },
       ...(terminalApi
@@ -490,6 +535,7 @@ export function Explorer({
     activeTab.id, activeLeaf.id, activeLeaf.path, selectedEntries, activeSelection.paths,
     settings.showHidden, settings.previewVisible, settings.sidebarVisible, settings.showFolderSizes,
     settings.terminalVisible, terminalApi, toggleTerminal,
+    activeLeaf.viewMode, patchLeaf,
     newTab, closeTab, splitPane, closePane, doNewFolder, doNewFile, pinCurrent, doUndo,
     onSettingsChange, onOpenSettings, fsApi,
   ]);
@@ -583,6 +629,9 @@ export function Explorer({
           case 'w': e.preventDefault(); return closeTab(activeTab.id);
           case 'p': e.preventDefault(); return setPalette('paths');
           case 'f': e.preventDefault(); return focusFilter(activeLeaf.id);
+          case 'r':
+            e.preventDefault();
+            return setRefreshKeys((k) => ({ ...k, [activeLeaf.id]: (k[activeLeaf.id] ?? 0) + 1 }));
           case '0': e.preventDefault(); return onSettingsChange({ fontSizeOffset: 0 });
           case '=':
           case '+': e.preventDefault(); return onSettingsChange({ fontSizeOffset: Math.min(8, settings.fontSizeOffset + 1) });
@@ -758,6 +807,9 @@ export function Explorer({
           sortDir: l.sortKey === key ? (l.sortDir === 'asc' ? 'desc' : 'asc') : 'asc',
         }))
       }
+      onToggleView={() =>
+        patchLeaf(leaf.id, (l) => ({ ...l, viewMode: l.viewMode === 'grid' ? 'details' : 'grid' }))
+      }
       onFilterChange={(text) => patchLeaf(leaf.id, (l) => ({ ...l, filter: text }))}
       onSelectionChange={(paths, cursor) => handleSelection(leaf.id, paths, cursor)}
       onListing={handleListing}
@@ -767,7 +819,8 @@ export function Explorer({
       onRenameCommit={(path, name) => void doRenameCommit(path, name)}
       onRenameCancel={() => setRenaming(null)}
       onCloseSearch={() => toggleSearch(leaf.id)}
-      onKeyDown={() => undefined}
+      refreshKey={refreshKeys[leaf.id] ?? 0}
+      onRefresh={() => setRefreshKeys((k) => ({ ...k, [leaf.id]: (k[leaf.id] ?? 0) + 1 }))}
     />
   );
 

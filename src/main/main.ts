@@ -322,6 +322,7 @@ function registerIpc(): void {
     }
   });
 
+  ipcMain.handle(CH.conflicts, (_e, srcs: string[], dest: string) => ops.conflicts(srcs, dest));
   ipcMain.handle(CH.copy, (_e, srcs: string[], dest: string, policy) =>
     ops.copy(srcs, dest, policy),
   );

@@ -217,6 +217,21 @@ async function rename(from: string, to: string): Promise<void> {
  * Operations
  * ------------------------------------------------------------------ */
 
+/**
+ * Which of `srcs` would collide in `destDir`. Asked BEFORE the operation so the
+ * user picks a policy up front, rather than the op stopping halfway to prompt —
+ * which would leave a half-finished copy behind if they cancelled.
+ */
+export async function conflicts(srcs: string[], destDirRaw: string): Promise<string[]> {
+  const destDir = normalize(destDirRaw);
+  const hits: string[] = [];
+  for (const raw of srcs) {
+    const name = path.win32.basename(normalize(raw));
+    if (await exists(normalize(path.win32.join(destDir, name)))) hits.push(name);
+  }
+  return hits;
+}
+
 export async function copy(
   srcs: string[],
   destDirRaw: string,

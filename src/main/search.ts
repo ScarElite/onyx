@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { EntryKind, SearchHit, SearchQuery } from '../shared/types';
-import { isCloudPath, normalize } from './fs-service';
+import { normalize } from './fs-service';
 
 /** Files larger than this are not content-searched — they are not source. */
 const CONTENT_CAP = 4 * 1024 * 1024;
@@ -57,8 +57,14 @@ function looksBinary(buf: Buffer): boolean {
 /**
  * Breadth-first walk from `q.root`, streaming hits as they are found so the UI
  * fills in immediately instead of waiting for a full traversal. Symlinks and
- * junctions are never followed (handoff §9.5), and cloud placeholders are never
- * read for content (§9.6) — matching their names still works.
+ * junctions are never followed (handoff §9.5).
+ *
+ * Content search deliberately does NOT skip cloud-synced files. It used to, to
+ * avoid hydrating OneDrive placeholders — but "under a OneDrive root" is a path
+ * prefix, not a hydration check, and on a machine whose entire Documents tree is
+ * synced that guard silently disabled content search everywhere it mattered.
+ * Reading an already-downloaded file costs nothing, and CONTENT_CAP keeps the
+ * worst case bounded. See the README's limitations.
  */
 export async function startSearch(q: SearchQuery): Promise<void> {
   const state = { cancelled: false };
@@ -125,7 +131,6 @@ export async function startSearch(q: SearchQuery): Promise<void> {
         }
 
         if (!wantContent || isLink || isDir) continue;
-        if (isCloudPath(full)) continue; // reading would trigger a download
 
         try {
           const st = await fs.lstat(full);

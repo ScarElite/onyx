@@ -31,11 +31,13 @@ filesystem.
 - [x] **Sidebar** — pinned places, Quick Access, and drives with live capacity bars
 - [x] **Query filter bar** — `ext:png size:>10mb mod:today -draft`, ANDed and instant
 - [x] **Command palette** — Ctrl+P fuzzy-jumps to a folder, Ctrl+Shift+P runs any command
+- [x] **Details + grid views** — grid draws real image thumbnails, virtualized either way
 - [x] **Preview pane + Space-to-peek** — images, text/code, PDF, video, audio, metadata
 - [x] **Recursive search** — names and file contents, streaming and cancellable
 - [x] **Git-aware** — per-row status dots, branch + dirty count in the breadcrumb
 - [x] **Real folder sizes** — computed in the background with an inline heat bar
 - [x] **File ops with undo** — copy/cut/paste, drag & drop, delete to the Recycle Bin
+- [x] **Conflict dialog** — overwrite / skip / keep both, asked up front, never mid-copy
 - [x] **Batch rename** — find/replace, regex, case ops, numbering, with a live preview
 - [x] **Session restore** — tabs, splits, folders and history come back on launch
 - [x] **Docked terminal with two-way cwd sync** — Conduit's `<Terminal/>` on an Onyx pty
@@ -53,6 +55,7 @@ See **ONYX_HANDOFF.md** for the full architecture, phased plan, and the Windows 
 | Ctrl+\ / Ctrl+Shift+\ / Ctrl+1..9 | Split right / split down / focus pane |
 | Ctrl+P / Ctrl+Shift+P | Go to folder / run a command |
 | Ctrl+F / Ctrl+Shift+F | Filter bar / recursive search |
+| Ctrl+R | Refresh the pane |
 | Space | Peek at the selected file |
 | F2 / Shift+F2 | Rename / batch rename |
 | F5 / F6 | Copy / move selection to the other pane |
@@ -190,9 +193,13 @@ python scripts/build-icon.py    # needs Pillow
 - **Hidden/system attributes are inferred**, not read. Node does not surface Windows file
   attributes, so Onyx uses the dot-prefix convention plus a list of known system items
   (`$Recycle.Bin`, `pagefile.sys`, …). A file marked hidden by any other means still shows.
-- **Cloud placeholders are detected by path**, not by reparse tag: anything under a OneDrive
-  root is treated as possibly-not-on-disk, which keeps content search and sizing from
-  triggering downloads. `stat` never hydrates a placeholder, so sizes and dates stay right.
+- **Cloud placeholders can't be detected properly.** Real detection needs the
+  `FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS` reparse tag, which Node doesn't expose, and the
+  obvious `stat` heuristics don't work (a small *local* file reports 0 blocks because NTFS
+  stores it in the MFT record). So `placeholder` is only a path-prefix guess and nothing
+  branches on it. Content search therefore **does** read files under OneDrive — an earlier
+  build skipped them and thereby disabled content search across the whole Documents tree,
+  which was worse. Listing, sorting and folder sizing use `stat`, which never hydrates.
 - **The file clipboard is Onyx's own.** Windows file copy/paste interop needs CF_HDROP plus
   a "Preferred DropEffect" blob that Electron's clipboard API doesn't model, so Ctrl+C in
   Explorer and Ctrl+V in Onyx do not yet exchange files. Paths are mirrored to the clipboard

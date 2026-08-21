@@ -40,6 +40,7 @@ export interface FilePaneProps {
   onForward: () => void;
   onUp: () => void;
   onSort: (key: SortKey) => void;
+  onToggleView: () => void;
   onFilterChange: (text: string) => void;
   onSelectionChange: (paths: string[], cursor: string | null) => void;
   onListing: (paneId: string, listing: DirListing | null, entries: FsEntry[]) => void;
@@ -49,15 +50,17 @@ export interface FilePaneProps {
   onRenameCommit: (path: string, newName: string) => void;
   onRenameCancel: () => void;
   onCloseSearch: () => void;
-  onKeyDown: (e: React.KeyboardEvent) => void;
+  /** Bumped to force a re-read (Ctrl+R / the refresh button). */
+  refreshKey: number;
+  onRefresh: () => void;
 }
 
 export function FilePane(props: FilePaneProps): React.JSX.Element {
   const {
     leaf, active, multi, settings, fsApi, selection, cutPaths, renaming, searchOpen,
-    onActivate, onNavigate, onBack, onForward, onUp, onSort, onFilterChange,
+    onActivate, onNavigate, onBack, onForward, onUp, onSort, onToggleView, onFilterChange,
     onSelectionChange, onListing, onOpenFile, onContextMenu, onDropPaths,
-    onRenameCommit, onRenameCancel, onCloseSearch, onKeyDown,
+    onRenameCommit, onRenameCancel, onCloseSearch, refreshKey, onRefresh,
   } = props;
 
   const [listing, setListing] = useState<DirListing | null>(null);
@@ -102,7 +105,9 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
       cancelled = true;
       stop();
     };
-  }, [fsApi, leaf.path, load]);
+    // refreshKey is a dependency on purpose: bumping it re-runs this effect,
+    // which is exactly what Ctrl+R and the refresh button do.
+  }, [fsApi, leaf.path, load, refreshKey]);
 
   /* ---- git badges arrive after the rows are already painted ---- */
 
@@ -202,9 +207,16 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
         <button
           type="button"
           className="navbtn"
-          title="Refresh (F5 refreshes; Ctrl+R)"
-          onClick={() => void load(leaf.path)}>
+          title="Refresh (Ctrl+R)"
+          onClick={onRefresh}>
           <Icon name="refresh" />
+        </button>
+        <button
+          type="button"
+          className="navbtn"
+          title={leaf.viewMode === 'grid' ? 'Details view' : 'Grid view'}
+          onClick={onToggleView}>
+          <Icon name={leaf.viewMode === 'grid' ? 'split-v' : 'split-h'} />
         </button>
 
         {editingPath !== null ? (
@@ -295,6 +307,7 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
           cursor={selection.cursor}
           sortKey={leaf.sortKey}
           sortDir={leaf.sortDir}
+          viewMode={leaf.viewMode}
           gitEntries={git?.entries ?? null}
           folderSizes={folderSizes}
           showFolderSizes={settings.showFolderSizes}
@@ -309,7 +322,6 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
           onRenameCommit={onRenameCommit}
           onRenameCancel={onRenameCancel}
           onFocus={onActivate}
-          onKeyDown={onKeyDown}
         />
       )}
 
