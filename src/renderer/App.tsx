@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Settings, UpdateStatus } from '../shared/types';
 import { Explorer } from './Explorer';
 import { createBridgeFsApi, createBridgeTerminalApi } from './fs-api';
+import { createBrainAssistantApi } from './assistant';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Icon } from './components/ui';
 import { applyTheme, findTheme } from './themes';
@@ -47,6 +48,18 @@ export function App(): React.JSX.Element {
     void window.onyx.checkForUpdate().then(setUpdate);
     return stop;
   }, []);
+
+  /**
+   * "Ask V" is only offered when a brain URL is configured — clearing it in
+   * settings removes the feature rather than leaving a button that always fails.
+   */
+  const assistant = useMemo(
+    () =>
+      settings?.assistantUrl
+        ? createBrainAssistantApi(settings.assistantUrl, settings.assistantToken ?? '')
+        : undefined,
+    [settings?.assistantUrl, settings?.assistantToken],
+  );
 
   /* ---- theme ---- */
 
@@ -157,6 +170,7 @@ export function App(): React.JSX.Element {
       <Explorer
         fsApi={fsApi}
         terminalApi={terminalApi}
+        assistant={assistant}
         theme={theme}
         settings={settings}
         onSettingsChange={changeSettings}

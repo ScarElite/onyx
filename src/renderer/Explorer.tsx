@@ -15,6 +15,7 @@ import type {
   Theme,
 } from '../shared/types';
 import type { FsApi, TerminalApi } from './fs-api';
+import type { AssistantApi } from './assistant';
 import { basename, formatBytes } from './lib/format';
 import {
   closeLeaf,
@@ -39,7 +40,12 @@ import { Peek, PreviewPane } from './components/PreviewPane';
 import { Sidebar } from './components/Sidebar';
 import { TabStrip } from './components/TabStrip';
 import { TerminalDock } from './components/TerminalDock';
+import { AskV } from './components/AskV';
 import { ContextMenu, useDialogs, type MenuItem } from './components/ui';
+// Imported HERE, not only in renderer.tsx, so `npm run build:lib` emits a
+// stylesheet alongside the component. A host that drops <Explorer/> in gets the
+// chrome with it instead of having to reproduce 1,200 lines of CSS.
+import './styles.css';
 
 export interface ExplorerProps {
   fsApi: FsApi;
@@ -48,6 +54,11 @@ export interface ExplorerProps {
    * filesystem but no shell — or its own, as V's Hub does.
    */
   terminalApi?: TerminalApi;
+  /**
+   * Optional: without it, "Ask V" is hidden. The Hub would inject an adapter
+   * over the brain connection it already holds rather than opening a second.
+   */
+  assistant?: AssistantApi;
   /** The resolved theme, needed to colour the docked terminal's xterm palette. */
   theme: Theme;
   settings: Settings;
@@ -74,6 +85,7 @@ interface PaneData {
 export function Explorer({
   fsApi,
   terminalApi,
+  assistant,
   theme,
   settings,
   onSettingsChange,
@@ -91,6 +103,7 @@ export function Explorer({
   const [peekPath, setPeekPath] = useState<string | null>(null);
   const [batchTargets, setBatchTargets] = useState<FsEntry[] | null>(null);
   const [searchPanes, setSearchPanes] = useState<Set<string>>(new Set());
+  const [askOpen, setAskOpen] = useState(false);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [progress, setProgress] = useState<OpProgress | null>(null);
   const [undoText, setUndoText] = useState<string | null>(null);
@@ -519,6 +532,15 @@ export function Explorer({
             },
           ]
         : []),
+      ...(assistant
+        ? [
+            {
+              label: `Ask ${assistant.name} about the selection`,
+              hint: 'Ctrl+Shift+A',
+              run: () => setAskOpen(true),
+            },
+          ]
+        : []),
       { label: 'Open in Windows Terminal', run: () => void fsApi.openTerminalAt(activeLeaf.path) },
       { label: 'Reveal in File Explorer', run: () => void fsApi.revealInExplorer(activeLeaf.path) },
       { label: 'Pin this folder', run: pinCurrent },
@@ -534,7 +556,7 @@ export function Explorer({
   }, [
     activeTab.id, activeLeaf.id, activeLeaf.path, selectedEntries, activeSelection.paths,
     settings.showHidden, settings.previewVisible, settings.sidebarVisible, settings.showFolderSizes,
-    settings.terminalVisible, terminalApi, toggleTerminal,
+    settings.terminalVisible, terminalApi, toggleTerminal, assistant,
     activeLeaf.viewMode, patchLeaf,
     newTab, closeTab, splitPane, closePane, doNewFolder, doNewFile, pinCurrent, doUndo,
     onSettingsChange, onOpenSettings, fsApi,
@@ -593,7 +615,7 @@ export function Explorer({
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement;
       // Modals own the keyboard while they are open.
-      if (palette || batchTargets || peekPath) return;
+      if (palette || batchTargets || peekPath || askOpen) return;
 
       const ctrl = e.ctrlKey || e.metaKey;
 
@@ -658,6 +680,10 @@ export function Explorer({
         switch (e.key.toLowerCase()) {
           case 'p': e.preventDefault(); return setPalette('actions');
           case 'f': e.preventDefault(); return toggleSearch(activeLeaf.id);
+          case 'a':
+            if (!assistant) break;
+            e.preventDefault();
+            return setAskOpen(true);
           default: break;
         }
       }
@@ -720,12 +746,12 @@ export function Explorer({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [
-    palette, batchTargets, peekPath, activeTab.id, activeLeaf.id, activeLeaf.path,
+    palette, batchTargets, peekPath, askOpen, activeTab.id, activeLeaf.id, activeLeaf.path,
     session.tabs, settings.showHidden, settings.fontSizeOffset, selectedEntries,
     activeSelection.cursor, activeTab.root, newTab, closeTab, doNewFolder, doUndo,
     splitPane, doCopy, doCut, doPaste, doDelete, transferToSibling, toggleSearch,
     patchLeaf, navigate, activatePane, focusFilter, onSettingsChange, onOpenSettings, fsApi,
-    terminalApi, toggleTerminal,
+    terminalApi, toggleTerminal, assistant,
   ]);
 
   /* ---------------------------------------------------------------- *
@@ -753,6 +779,9 @@ export function Explorer({
             { label: 'Paste', accel: 'Ctrl+V', onClick: () => void doPaste() },
             { separator: true, label: '' },
             { label: many ? `Batch rename ${selected.length}` : 'Rename', accel: many ? 'Shift+F2' : 'F2', onClick: () => (many ? setBatchTargets(selectedEntries) : setRenaming(entry.path)) },
+            ...(assistant
+              ? [{ label: `Ask ${assistant.name} about this`, accel: 'Ctrl+Shift+A', onClick: () => setAskOpen(true) }]
+              : []),
             { label: 'Copy path', onClick: () => fsApi.copyText(selected.join('\r\n')) },
             { label: 'Reveal in File Explorer', onClick: () => void fsApi.revealInExplorer(entry.path) },
             { separator: true, label: '' },
@@ -775,7 +804,7 @@ export function Explorer({
 
       setCtxMenu({ x: e.clientX, y: e.clientY, items });
     },
-    [activatePane, selections, activeTab.root, activeLeaf.path, navigate, openEntry, newTab, doCut, doCopy, doPaste, selectedEntries, fsApi, settings.deleteToTrash, doDelete, doNewFolder, doNewFile, splitPane, pinCurrent],
+    [activatePane, selections, activeTab.root, activeLeaf.path, navigate, openEntry, newTab, doCut, doCopy, doPaste, selectedEntries, fsApi, settings.deleteToTrash, doDelete, doNewFolder, doNewFile, splitPane, pinCurrent, assistant],
   );
 
   /* ---------------------------------------------------------------- *
@@ -881,6 +910,7 @@ export function Explorer({
             theme={theme}
             fontSize={Math.max(9, theme.font.size + settings.fontSizeOffset)}
             height={settings.terminalHeight}
+            shell={settings.shell}
             terminalApi={terminalApi}
             onShellCwd={handleShellCwd}
             onHeightChange={(h) => onSettingsChange({ terminalHeight: h })}
@@ -942,6 +972,18 @@ export function Explorer({
       )}
 
       {peekPath && <Peek fsApi={fsApi} path={peekPath} onClose={() => setPeekPath(null)} />}
+
+      {askOpen && assistant && (
+        <AskV
+          assistant={assistant}
+          context={{
+            cwd: activeLeaf.path,
+            selection: selectedEntries,
+            visible: activeData.entries,
+          }}
+          onClose={() => setAskOpen(false)}
+        />
+      )}
 
       {batchTargets && batchTargets.length > 0 && (
         <BatchRename

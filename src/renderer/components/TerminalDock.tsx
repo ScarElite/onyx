@@ -18,6 +18,8 @@ export interface TerminalDockProps {
   theme: Theme;
   fontSize: number;
   height: number;
+  /** Optional shell override from settings; blank means auto-detect. */
+  shell?: string;
   terminalApi: TerminalApi;
   /** The shell moved (a plain `cd`) — the pane should follow it. */
   onShellCwd: (cwd: string) => void;
@@ -42,6 +44,7 @@ export function TerminalDock({
   theme,
   fontSize,
   height,
+  shell,
   terminalApi,
   onShellCwd,
   onHeightChange,
@@ -55,6 +58,10 @@ export function TerminalDock({
   const startedRef = useRef(false);
   const cwdRef = useRef(cwd);
   cwdRef.current = cwd;
+  // Read through a ref so changing the setting doesn't rebuild ptyApi (which
+  // would remount the terminal); it applies to the next shell that starts.
+  const shellRef = useRef(shell);
+  shellRef.current = shell;
 
   /**
    * The pty contract handed to Conduit's <Terminal/>.
@@ -74,7 +81,7 @@ export function TerminalDock({
           return;
         }
         startedRef.current = true;
-        terminalApi.start(id, cwdRef.current, cols, rows);
+        terminalApi.start(id, cwdRef.current, cols, rows, shellRef.current);
       },
       onExit: (cb) => terminalApi.onExit(id, cb),
       kill: () => terminalApi.kill(id),

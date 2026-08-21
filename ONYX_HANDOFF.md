@@ -250,38 +250,38 @@ git badge colors (added/modified/untracked/ignored), and the folder-size heat-ba
 
 Build in order. Each phase ends runnable.
 
-### Phase 0 — Scaffold + a real listing
+### Phase 0 — Scaffold + a real listing — DONE
 Forge/Vite/TS scaffold, frameless window with the Conduit titlebar, `fs-service.readDir`
 over IPC, and a plain file list you can double-click into and Backspace out of. Drives in
 the sidebar. **This proves the IPC shape before any feature is built on it.**
 
-### Phase 1 — Chrome + theming
+### Phase 1 (DONE) — Chrome + theming
 Port `themes.ts` and `styles.css` from Conduit. Settings panel with the palette grid, live
 apply, custom themes, persistence. Window controls, opacity, font zoom.
 
-### Phase 2 — Tabs, splits, navigation
+### Phase 2 (DONE) — Tabs, splits, navigation
 Tab strip, pane tree (split H/V, focus, close), per-pane history (back/forward/up),
 breadcrumb with click-to-jump and click-to-edit, session restore.
 
-### Phase 3 — File operations + undo
+### Phase 3 (DONE) — File operations + undo
 Copy/cut/paste, drag & drop (internal *and* from/to Explorer), rename, delete to Recycle
 Bin, new folder, conflict resolution dialog, progress UI, and the undo journal.
 **Write the undo journal before the ops, not after** — an op that isn't journaled is a bug.
 
-### Phase 4 — Preview, palette, filter
+### Phase 4 (DONE) — Preview, palette, filter
 Preview pane + Space peek, fuzzy path jump, action palette, query filter bar
 (`ext:` `size:` `mod:` `name:`).
 
-### Phase 5 — Search, git, sizes
+### Phase 5 (DONE) — Search, git, sizes
 Streaming recursive search; `git status` badges + branch in breadcrumb; background folder
 sizing with heat bars. All three are "slow work off the UI thread" — share one pattern.
 
-### Phase 6 — Terminal dock (adds node-pty)
+### Phase 6 — Terminal dock (adds node-pty) — DONE
 Add `node-pty` and consume `<Terminal/>` from the Conduit git dependency. Wire two-way cwd
 sync via OSC 7. **This is the phase that needs the C++ toolchain** — see Conduit's README
 for the Spectre-libs patch story; reuse `patches/node-pty+1.1.0.patch` verbatim.
 
-### Phase 7 — Ask V + Hub panel
+### Phase 7 — Ask V + Hub panel — DONE
 WebSocket client to V's brain; "Ask V" on a selection. `build:lib` the `<Explorer/>`
 component and dock it in the Hub.
 

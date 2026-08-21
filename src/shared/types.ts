@@ -313,6 +313,10 @@ export interface Settings {
   terminalHeight: number;
   /** Optional shell override (e.g. 'pwsh.exe', 'cmd.exe'). Empty = auto-detect. */
   shell?: string;
+  /** V's brain WebSocket. Empty disables "Ask V" entirely. */
+  assistantUrl: string;
+  /** Optional BRAIN_DEVICE_TOKEN, if the brain is configured to require one. */
+  assistantToken?: string;
   pinned: Place[];
   /** Restored on launch when present. */
   session?: SessionState;
@@ -335,6 +339,8 @@ export const DEFAULT_SETTINGS: Settings = {
   terminalVisible: false,
   terminalHeight: 240,
   shell: '',
+  assistantUrl: 'ws://127.0.0.1:8765/ws',
+  assistantToken: '',
   pinned: [],
 };
 

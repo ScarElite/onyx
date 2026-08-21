@@ -134,10 +134,17 @@ function contentSecurityPolicy(): string {
     return [
       ...common,
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "connect-src 'self' ws: http://localhost:* http://127.0.0.1: onyx-media:",
+      // ws: covers Vite HMR and the local brain socket in dev.
+      "connect-src 'self' ws: http://localhost:* http://127.0.0.1:* onyx-media:",
     ].join('; ');
   }
-  return [...common, "script-src 'self'", "connect-src 'self' onyx-media:"].join('; ');
+  // Loopback only: "Ask V" talks to the brain on 127.0.0.1. Nothing here opens
+  // a socket to anywhere off this machine.
+  return [
+    ...common,
+    "script-src 'self'",
+    "connect-src 'self' onyx-media: ws://127.0.0.1:* ws://localhost:*",
+  ].join('; ');
 }
 
 function createWindow(): void {

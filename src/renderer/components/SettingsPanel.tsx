@@ -160,6 +160,63 @@ export function SettingsPanel({
       </div>
 
       <div className="settings__section">
+        <h3>Assistant</h3>
+        <div className="setting">
+          <div>
+            <div className="setting__label">V&apos;s brain</div>
+            <span className="setting__hint">
+              WebSocket for &ldquo;Ask V&rdquo; (Ctrl+Shift+A). Clear it to hide the feature.
+              Loopback addresses only.
+            </span>
+          </div>
+          <input
+            className="modal__input"
+            style={{ width: 220 }}
+            spellCheck={false}
+            placeholder="ws://127.0.0.1:8765/ws"
+            value={settings.assistantUrl}
+            onChange={(e) => onChange({ assistantUrl: e.target.value })}
+          />
+        </div>
+        <div className="setting">
+          <div>
+            <div className="setting__label">Device token</div>
+            <span className="setting__hint">
+              Only if the brain is configured to require BRAIN_DEVICE_TOKEN.
+            </span>
+          </div>
+          <input
+            className="modal__input"
+            style={{ width: 220 }}
+            type="password"
+            spellCheck={false}
+            value={settings.assistantToken ?? ''}
+            onChange={(e) => onChange({ assistantToken: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="settings__section">
+        <h3>Terminal</h3>
+        <div className="setting">
+          <div>
+            <div className="setting__label">Shell</div>
+            <span className="setting__hint">
+              Blank auto-detects PowerShell 7, then Windows PowerShell.
+            </span>
+          </div>
+          <input
+            className="modal__input"
+            style={{ width: 220 }}
+            spellCheck={false}
+            placeholder="auto-detect"
+            value={settings.shell ?? ''}
+            onChange={(e) => onChange({ shell: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="settings__section">
         <h3>Safety</h3>
         <Toggle
           label="Delete to the Recycle Bin"

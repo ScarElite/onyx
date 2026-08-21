@@ -41,7 +41,8 @@ filesystem.
 - [x] **Batch rename** — find/replace, regex, case ops, numbering, with a live preview
 - [x] **Session restore** — tabs, splits, folders and history come back on launch
 - [x] **Docked terminal with two-way cwd sync** — Conduit's `<Terminal/>` on an Onyx pty
-- [ ] "Ask V" on a selection, and the Hub panel build (Phase 7)
+- [x] **Ask V** — send a selection's paths + metadata to V's brain, streamed reply
+- [x] **Embeddable `<Explorer/>`** — `npm run build:lib` for V's Command Hub
 
 See **ONYX_HANDOFF.md** for the full architecture, phased plan, and the Windows gotchas.
 
@@ -64,6 +65,7 @@ See **ONYX_HANDOFF.md** for the full architecture, phased plan, and the Windows 
 | Ctrl+Z | Undo the last file operation |
 | Ctrl+N / Ctrl+H / Ctrl+, | New folder / toggle hidden / Settings |
 | Ctrl+` | Toggle the docked terminal |
+| Ctrl+Shift+A | Ask V about the selection |
 | Ctrl+ +/− / Ctrl+0 | Text size / reset |
 
 **Drag & drop:** dragging inside Onyx moves (hold Ctrl to copy), and files dropped in from
@@ -118,6 +120,23 @@ npm run rebuild  # electron-rebuild -f -w node-pty
 > current directory from the exe search path and breaks node-gyp's winpty step. Clear it
 > first: `Remove-Item Env:NoDefaultCurrentDirectoryInExePath`.
 
+## Ask V
+
+Ctrl+Shift+A sends the current folder and selection to
+[V's brain](https://github.com/ScarElite) over `ws://127.0.0.1:8765/ws` and streams the
+reply — "what is this folder for?", "which of these look like duplicates?".
+
+**Paths and metadata only. File contents never leave the app.** The dialog has a *Show
+context* button that prints verbatim what is about to be sent, so that claim is checkable
+rather than a promise. V has its own filesystem skills and can read any of those paths
+itself if it decides to.
+
+The connection is loopback-only and the production CSP allows nothing else
+(`connect-src 'self' onyx-media: ws://127.0.0.1:* ws://localhost:*`). A fresh socket is
+opened per question, because the brain is a local process that starts and stops at will
+and a long-lived socket would spend most of its life broken. Clearing `assistantUrl` in
+settings removes the feature entirely rather than leaving a button that always fails.
+
 ## Theming
 
 Every palette is three knobs plus a glow multiplier, exactly as in V's Command Center:
@@ -146,11 +165,33 @@ interface FsApi {
   // …see src/renderer/fs-api.ts for the full contract
 }
 
-// <Explorer fsApi={api} settings={settings} onSettingsChange={…} initialPath="C:\\" />
+<Explorer
+  fsApi={api}                 // required
+  terminalApi={termApi}       // optional — omit and no terminal dock is rendered
+  assistant={vApi}            // optional — omit and "Ask V" is hidden
+  theme={theme}
+  settings={settings}
+  onSettingsChange={…}
+  initialPath="C:\\"
+/>
 ```
 
-The standalone app implements it over the preload bridge (`createBridgeFsApi()`); the Hub
-implements it over its own main process. Same contract → no rewrite.
+Three separate boundaries, so a host takes only what it can back. The standalone app
+implements all three over the preload bridge (`createBridgeFsApi()`,
+`createBridgeTerminalApi()`, `createBrainAssistantApi()`); the Hub already owns a node-pty
+and a brain connection, so it would pass adapters over those rather than let Onyx open a
+second of each.
+
+Build the component with `npm run build:lib`, which emits **committed** artifacts:
+
+```
+lib/onyx-explorer.js    ~717 KB — the explorer + the vendored terminal, React externalized
+lib/onyx-explorer.css   ~32 KB  — the whole HUD, so the host doesn't reproduce it
+```
+
+They're committed for the same reason Conduit commits its `lib/`: the Hub can consume Onyx
+as a git dependency without installing its devDependencies, downloading Electron, or
+needing a C++ toolchain.
 
 ## Getting started
 
