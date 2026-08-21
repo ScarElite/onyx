@@ -1454,6 +1454,68 @@ input {
 }
 
 /* ================================================================== *
+ * Terminal dock
+ * ================================================================== */
+
+.dock {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 0 0 auto;
+  background: var(--chrome-bg);
+  border-top: 1px solid var(--border);
+}
+
+.dock__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 8px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--dim-fg);
+}
+.dock__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--accent) 80%, var(--dim-fg));
+  overflow: hidden;
+  white-space: nowrap;
+}
+.dock__spacer {
+  flex: 1;
+}
+.dock__exit {
+  color: var(--git-deleted);
+}
+.dock__close {
+  color: var(--dim-fg);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 3px;
+}
+.dock__close:hover {
+  color: var(--git-deleted);
+}
+
+/* xterm needs a positioned, non-zero box to fit into. */
+.dock__term {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  padding: 4px 6px;
+}
+.dock__term > * {
+  height: 100%;
+}
+
+/* ================================================================== *
  * Status bar
  * ================================================================== */
 

@@ -11,8 +11,9 @@ import type {
   Settings,
   SortKey,
   TabState,
+  Theme,
 } from '../shared/types';
-import type { FsApi } from './fs-api';
+import type { FsApi, TerminalApi } from './fs-api';
 import { basename, formatBytes } from './lib/format';
 import {
   closeLeaf,
@@ -36,10 +37,18 @@ import { PaneTreeView } from './components/PaneTree';
 import { Peek, PreviewPane } from './components/PreviewPane';
 import { Sidebar } from './components/Sidebar';
 import { TabStrip } from './components/TabStrip';
+import { TerminalDock } from './components/TerminalDock';
 import { ContextMenu, useDialogs, type MenuItem } from './components/ui';
 
 export interface ExplorerProps {
   fsApi: FsApi;
+  /**
+   * Optional: without it, no terminal dock is rendered. A host may have a
+   * filesystem but no shell — or its own, as V's Hub does.
+   */
+  terminalApi?: TerminalApi;
+  /** The resolved theme, needed to colour the docked terminal's xterm palette. */
+  theme: Theme;
   settings: Settings;
   onSettingsChange: (patch: Partial<Settings>) => void;
   /** Where a fresh session starts. Ignored when a saved session is restored. */
@@ -63,6 +72,8 @@ interface PaneData {
  */
 export function Explorer({
   fsApi,
+  terminalApi,
+  theme,
   settings,
   onSettingsChange,
   initialPath,
@@ -419,6 +430,20 @@ export function Explorer({
    * Commands (palette + keyboard + context menu all use these)
    * ---------------------------------------------------------------- */
 
+  /**
+   * The shell moved (a plain `cd`), so the pane follows. This closes the loop
+   * with the pane -> shell direction; it terminates because both sides no-op
+   * when the path already matches.
+   */
+  const handleShellCwd = useCallback(
+    (path: string) => navigate(activeLeaf.id, path),
+    [navigate, activeLeaf.id],
+  );
+
+  const toggleTerminal = useCallback(() => {
+    onSettingsChange({ terminalVisible: !settings.terminalVisible });
+  }, [onSettingsChange, settings.terminalVisible]);
+
   const toggleSearch = useCallback((paneId: string) => {
     setSearchPanes((prev) => {
       const next = new Set(prev);
@@ -440,6 +465,15 @@ export function Explorer({
       { label: 'Search in this folder', hint: 'Ctrl+Shift+F', run: () => toggleSearch(activeLeaf.id) },
       { label: 'Batch rename selection', hint: 'Shift+F2', run: () => setBatchTargets(selectedEntries) },
       { label: 'Copy paths to clipboard', run: () => fsApi.copyText(activeSelection.paths.join('\r\n')) },
+      ...(terminalApi
+        ? [
+            {
+              label: `${settings.terminalVisible ? 'Hide' : 'Show'} the docked terminal`,
+              hint: 'Ctrl+`',
+              run: toggleTerminal,
+            },
+          ]
+        : []),
       { label: 'Open in Windows Terminal', run: () => void fsApi.openTerminalAt(activeLeaf.path) },
       { label: 'Reveal in File Explorer', run: () => void fsApi.revealInExplorer(activeLeaf.path) },
       { label: 'Pin this folder', run: pinCurrent },
@@ -455,6 +489,7 @@ export function Explorer({
   }, [
     activeTab.id, activeLeaf.id, activeLeaf.path, selectedEntries, activeSelection.paths,
     settings.showHidden, settings.previewVisible, settings.sidebarVisible, settings.showFolderSizes,
+    settings.terminalVisible, terminalApi, toggleTerminal,
     newTab, closeTab, splitPane, closePane, doNewFolder, doNewFile, pinCurrent, doUndo,
     onSettingsChange, onOpenSettings, fsApi,
   ]);
@@ -521,6 +556,13 @@ export function Explorer({
       if (ctrl && e.code === 'Backslash') {
         e.preventDefault();
         return splitPane(e.shiftKey ? 'v' : 'h');
+      }
+
+      // Ctrl+` toggles the terminal dock. Backquote via e.code so the shifted
+      // character (~) doesn't matter.
+      if (ctrl && e.code === 'Backquote' && terminalApi) {
+        e.preventDefault();
+        return toggleTerminal();
       }
 
       // Ctrl+1..9 focuses a pane by position.
@@ -634,6 +676,7 @@ export function Explorer({
     activeSelection.cursor, activeTab.root, newTab, closeTab, doNewFolder, doUndo,
     splitPane, doCopy, doCut, doPaste, doDelete, transferToSibling, toggleSearch,
     patchLeaf, navigate, activatePane, focusFilter, onSettingsChange, onOpenSettings, fsApi,
+    terminalApi, toggleTerminal,
   ]);
 
   /* ---------------------------------------------------------------- *
@@ -774,6 +817,26 @@ export function Explorer({
             />
           )}
         </div>
+
+        {terminalApi && settings.terminalVisible && (
+          <TerminalDock
+            // Keyed by tab: one shell per tab, which follows whichever pane is
+            // active. Per-pane shells would mean four of them in a quad split.
+            key={activeTab.id}
+            id={activeTab.id}
+            cwd={activeLeaf.path}
+            theme={theme}
+            fontSize={Math.max(9, theme.font.size + settings.fontSizeOffset)}
+            height={settings.terminalHeight}
+            terminalApi={terminalApi}
+            onShellCwd={handleShellCwd}
+            onHeightChange={(h) => onSettingsChange({ terminalHeight: h })}
+            onClose={toggleTerminal}
+            copyText={fsApi.copyText}
+            openLink={(url) => window.open(url, '_blank')}
+            getPathForFile={fsApi.getPathForFile}
+          />
+        )}
 
         <div className="statusbar">
           <span>

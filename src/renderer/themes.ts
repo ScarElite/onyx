@@ -1,4 +1,5 @@
 import type { Theme } from '../shared/types';
+import type { XTermTheme } from './vendor/conduit-terminal';
 
 // JetBrains Mono leads (V's Command Center font) with graceful fallbacks —
 // Cascadia Code ships with modern Windows. We avoid a remote Google-Fonts
@@ -103,6 +104,43 @@ export const PRESETS: Theme[] = [
 
 export function findTheme(name: string, custom: Theme[]): Theme {
   return custom.find((t) => t.name === name) ?? PRESETS.find((t) => t.name === name) ?? PRESETS[0];
+}
+
+/**
+ * Program (ANSI 16) colors for the docked terminal — palette-neutral and kept
+ * CONSTANT across the vlime family, exactly as in Conduit. Colored CLI output
+ * has to stay predictable as you switch accent palettes: `git diff` red must
+ * still read as red under Ice or Violet.
+ */
+const VLIME_ANSI = {
+  black: '#11160f',
+  red: '#ff5c7a',
+  green: '#a3e635',
+  yellow: '#d4e157',
+  blue: '#4fc3f7',
+  magenta: '#c792ea',
+  cyan: '#56e0c0',
+  white: '#cfe8b4',
+  brightBlack: '#3a4a32',
+  brightRed: '#ff7a93',
+  brightGreen: '#bdf64f',
+  brightYellow: '#e6f06a',
+  brightBlue: '#73d4ff',
+  brightMagenta: '#dca8ff',
+  brightCyan: '#7af0d6',
+  brightWhite: '#eaffd6',
+} as const;
+
+/** Derive the docked terminal's xterm palette from the active Onyx theme. */
+export function xtermTheme(theme: Theme): XTermTheme {
+  return {
+    foreground: theme.chrome.fg,
+    background: theme.chrome.chromeBg,
+    cursor: theme.chrome.accent,
+    cursorAccent: theme.chrome.chromeBg,
+    selectionBackground: theme.chrome.selectionBg,
+    ...VLIME_ANSI,
+  };
 }
 
 const kebab = (s: string) => s.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);

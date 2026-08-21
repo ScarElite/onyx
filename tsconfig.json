@@ -4,7 +4,11 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "jsx": "react-jsx",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -17,7 +21,10 @@
     "isolatedModules": true,
     "noEmit": true,
     "baseUrl": ".",
-    "types": ["node", "vite/client"]
+    "types": [
+      "node",
+      "vite/client"
+    ]
   },
   "include": [
     "src",
@@ -26,5 +33,8 @@
     "vite.main.config.ts",
     "vite.preload.config.ts",
     "vite.renderer.config.ts"
+  ],
+  "exclude": [
+    "src/renderer/vendor/conduit-terminal.js"
   ]
 }

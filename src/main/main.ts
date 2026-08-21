@@ -29,6 +29,15 @@ import { preview } from './preview';
 import { gitStatus, invalidateGit } from './git';
 import { folderSize, invalidateSize } from './sizes';
 import { cancelAllSearches, cancelSearch, setSearchSinks, startSearch } from './search';
+import {
+  killAllPtys,
+  killPty,
+  resizePty,
+  setPtyCwd,
+  setPtySinks,
+  startPty,
+  writePty,
+} from './pty';
 import { loadSettings, saveSettings } from './settings';
 
 // Squirrel fires this on install/update shortcut creation; quit immediately.
@@ -185,11 +194,13 @@ function createWindow(): void {
   mainWindow.webContents.on('did-start-loading', () => {
     fsService.closeAllWatchers();
     cancelAllSearches();
+    killAllPtys();
   });
 
   mainWindow.on('closed', () => {
     fsService.closeAllWatchers();
     cancelAllSearches();
+    killAllPtys();
     mainWindow = null;
   });
 
@@ -260,6 +271,11 @@ function registerIpc(): void {
     (id: string, hit: SearchHit) => mainWindow?.webContents.send(CH.searchHit, id, hit),
     (id: string, truncated: boolean) => mainWindow?.webContents.send(CH.searchDone, id, truncated),
   );
+  setPtySinks({
+    onData: (id, chunk) => mainWindow?.webContents.send(CH.ptyData, id, chunk),
+    onExit: (id, code) => mainWindow?.webContents.send(CH.ptyExit, id, code),
+    onCwd: (id, cwd) => mainWindow?.webContents.send(CH.ptyCwd, id, cwd),
+  });
 
   // --- reading ---
   ipcMain.handle(CH.readDir, (_e, p: string) => fsService.readDir(p));
@@ -366,6 +382,15 @@ function registerIpc(): void {
     return res.canceled || !res.filePaths[0] ? null : fsService.normalize(res.filePaths[0]);
   });
   ipcMain.handle(CH.appVersion, () => app.getVersion());
+
+  // --- terminal dock ---
+  ipcMain.on(CH.ptyStart, (_e, id: string, cwd: string, cols: number, rows: number, shell?: string) =>
+    void startPty(id, cwd, cols, rows, shell || undefined),
+  );
+  ipcMain.on(CH.ptyWrite, (_e, id: string, data: string) => writePty(id, data));
+  ipcMain.on(CH.ptyResize, (_e, id: string, cols: number, rows: number) => resizePty(id, cols, rows));
+  ipcMain.on(CH.ptyKill, (_e, id: string) => killPty(id));
+  ipcMain.on(CH.ptySetCwd, (_e, id: string, cwd: string) => setPtyCwd(id, cwd));
 
   // --- auto-update ---
   ipcMain.handle(CH.checkForUpdate, () => {

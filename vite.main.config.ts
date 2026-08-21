@@ -1,8 +1,15 @@
 import { defineConfig } from 'vite';
 
-// Onyx has NO native or externalized runtime deps: electron-store and everything
-// else are bundled straight into the main chunk. That matters because the Forge
-// Vite plugin excludes node_modules from the packaged app — anything left
-// external has to be copied back in by hand (Conduit does exactly that dance for
-// node-pty). Keeping the dependency list bundle-able avoids the whole problem.
-export default defineConfig({});
+// node-pty is a native module: it must stay EXTERNAL so its runtime `require`
+// of the compiled .node binary keeps working, and so it can be unpacked from
+// the asar archive at package time. Everything else (electron-store, etc.) is
+// bundled — see the packageAfterCopy hook in forge.config.ts, which copies
+// node-pty back into the packaged app after the Vite plugin strips
+// node_modules. This is the one dependency worth that dance.
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      external: ['node-pty'],
+    },
+  },
+});

@@ -20,11 +20,9 @@ filesystem.
 - **Electron** (+ Electron Forge, Vite, TypeScript) — app shell
 - **React 19** — all UI (pinned to match V's Hub)
 - **electron-store** — persisted settings and session
-- Node's own `fs` + the `git` CLI — no native modules, so `npm install` needs no toolchain
-
-> There is deliberately **no `node-pty`** yet. It is the slowest part of Conduit's setup
-> (C++ build tools, a Spectre-libs patch) and is only needed for the docked terminal in
-> Phase 6. Everything up to that point installs clean.
+- Node's own `fs` + the `git` CLI — the explorer itself needs no native modules
+- **node-pty** — the docked terminal's real pseudoterminal (ConPTY). The one native
+  dependency, and the only reason a C++ toolchain is needed. See *Building the terminal*.
 
 ## Features
 
@@ -40,7 +38,7 @@ filesystem.
 - [x] **File ops with undo** — copy/cut/paste, drag & drop, delete to the Recycle Bin
 - [x] **Batch rename** — find/replace, regex, case ops, numbering, with a live preview
 - [x] **Session restore** — tabs, splits, folders and history come back on launch
-- [ ] Docked Conduit terminal with two-way `cd` sync (Phase 6)
+- [x] **Docked terminal with two-way cwd sync** — Conduit's `<Terminal/>` on an Onyx pty
 - [ ] "Ask V" on a selection, and the Hub panel build (Phase 7)
 
 See **ONYX_HANDOFF.md** for the full architecture, phased plan, and the Windows gotchas.
@@ -62,12 +60,60 @@ See **ONYX_HANDOFF.md** for the full architecture, phased plan, and the Windows 
 | Delete / Shift+Delete | Recycle Bin / permanent |
 | Ctrl+Z | Undo the last file operation |
 | Ctrl+N / Ctrl+H / Ctrl+, | New folder / toggle hidden / Settings |
+| Ctrl+` | Toggle the docked terminal |
 | Ctrl+ +/− / Ctrl+0 | Text size / reset |
 
 **Drag & drop:** dragging inside Onyx moves (hold Ctrl to copy), and files dropped in from
 Explorer are copied. Hold **Alt** as you start a drag to hand the files to *another
 application* — that path uses Electron's OS-level drag, which takes over the pointer and so
 cannot also be the default.
+
+## The docked terminal
+
+Ctrl+` opens a real PowerShell under the pane, and the two stay in step **both ways**:
+
+- **pane → shell** — navigating writes a `Set-Location`, but only when the shell is
+  actually sitting at an idle prompt. Otherwise it's queued and flushed at the next
+  prompt, so it never lands in the middle of a line you're typing or in a running
+  program's stdin.
+- **shell → pane** — Onyx injects a prompt wrapper that emits **OSC 7** on every prompt;
+  main parses it, so a plain `cd` moves the file pane. The wrapper *wraps* rather than
+  replaces `prompt`, so oh-my-posh / Starship keep working.
+
+The terminal itself is Conduit's `<Terminal/>`, vendored into `src/renderer/vendor/`
+rather than installed as a git dependency. Its bundle already inlines xterm and
+externalizes only React, so it needs nothing at runtime — but installing Conduit as a
+dependency would also install *its* dependencies, including a second, unbuilt copy of
+node-pty sitting next to ours. Two committed files are the cheaper, clearer trade.
+Re-sync it with:
+
+```bash
+node scripts/sync-conduit-terminal.mjs   # prefers a sibling Conduit checkout
+```
+
+`src/renderer/vendor/SOURCE.md` records the exact commit it came from.
+
+### Building the terminal
+
+node-pty is native, so it needs a C++ toolchain
+(`winget install Microsoft.VisualStudio.2022.BuildTools`, "Desktop development with C++",
+plus Python 3) and a rebuild against Electron's ABI:
+
+```bash
+npm install      # postinstall applies patches/ automatically
+npm run rebuild  # electron-rebuild -f -w node-pty
+```
+
+> **node-pty + Spectre:** node-pty's Windows build requests Spectre-mitigated MSVC
+> libraries. Rather than require that VS component, Onyx disables the flag via
+> `patch-package` (`patches/node-pty+1.1.0.patch`, borrowed from Conduit and re-applied
+> by the `postinstall` hook). For the hardened build instead, install "MSVC v143
+> Spectre-mitigated libs" in the VS Installer and delete the patch.
+
+> **If `npm run rebuild` fails with `'GetCommitHash.bat' is not recognized`:** something
+> in the environment has set `NoDefaultCurrentDirectoryInExePath`, which drops the
+> current directory from the exe search path and breaks node-gyp's winpty step. Clear it
+> first: `Remove-Item Env:NoDefaultCurrentDirectoryInExePath`.
 
 ## Theming
 

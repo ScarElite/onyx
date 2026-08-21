@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Settings, UpdateStatus } from '../shared/types';
 import { Explorer } from './Explorer';
-import { createBridgeFsApi } from './fs-api';
+import { createBridgeFsApi, createBridgeTerminalApi } from './fs-api';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Icon } from './components/ui';
 import { applyTheme, findTheme } from './themes';
@@ -14,6 +14,7 @@ import { applyTheme, findTheme } from './themes';
  */
 export function App(): React.JSX.Element {
   const fsApi = useMemo(() => createBridgeFsApi(), []);
+  const terminalApi = useMemo(() => createBridgeTerminalApi(), []);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [home, setHome] = useState<string | null>(null);
   const [version, setVersion] = useState('');
@@ -93,7 +94,10 @@ export function App(): React.JSX.Element {
     return () => window.removeEventListener('beforeunload', flush);
   }, []);
 
-  if (!settings || !home) {
+  // `theme` is derived from `settings`, so it is non-null whenever settings is —
+  // but narrowing it here is what lets <Explorer/> take a plain `Theme` instead
+  // of a nullable one.
+  if (!settings || !home || !theme) {
     return <div className="loading">Onyx</div>;
   }
 
@@ -152,6 +156,8 @@ export function App(): React.JSX.Element {
 
       <Explorer
         fsApi={fsApi}
+        terminalApi={terminalApi}
+        theme={theme}
         settings={settings}
         onSettingsChange={changeSettings}
         initialPath={home}

@@ -74,6 +74,74 @@ export interface FsApi {
 }
 
 /**
+ * The docked terminal's contract — separate from FsApi on purpose.
+ *
+ * A host may have a filesystem but no shell (or its own, entirely different
+ * one), so <Explorer/> takes this as an OPTIONAL prop and simply renders no dock
+ * without it. V's Hub already owns a node-pty of its own; it can pass an adapter
+ * over that rather than Onyx spawning a competing shell inside the Hub.
+ */
+export interface TerminalApi {
+  /** Spawn a shell for `id` at `cwd`. Safe to call twice for the same id. */
+  start(id: string, cwd: string, cols: number, rows: number, shell?: string): void;
+  write(id: string, data: string): void;
+  resize(id: string, cols: number, rows: number): void;
+  kill(id: string): void;
+  /** The pane navigated — move the shell too (at its next idle prompt). */
+  setCwd(id: string, cwd: string): void;
+  onData(id: string, cb: (chunk: string) => void): () => void;
+  onExit(id: string, cb: (code: number) => void): () => void;
+  /** The shell moved (OSC 7) — the pane should follow. */
+  onCwd(id: string, cb: (cwd: string) => void): () => void;
+}
+
+/**
+ * TerminalApi over the preload bridge. Like the FsApi adapter below, this exists
+ * only to turn one global IPC stream into per-id subscriptions — components ask
+ * about *their* terminal, not about every terminal.
+ */
+export function createBridgeTerminalApi(): TerminalApi {
+  const onyx = window.onyx;
+
+  const fanOut = <T,>(
+    subscribe: (cb: (id: string, value: T) => void) => () => void,
+  ): ((id: string, cb: (value: T) => void) => () => void) => {
+    const listeners = new Map<string, Set<(value: T) => void>>();
+    subscribe((id, value) => {
+      const set = listeners.get(id);
+      if (set) for (const cb of set) cb(value);
+    });
+    return (id, cb) => {
+      let set = listeners.get(id);
+      if (!set) {
+        set = new Set();
+        listeners.set(id, set);
+      }
+      set.add(cb);
+      return () => {
+        set?.delete(cb);
+        if (set && set.size === 0) listeners.delete(id);
+      };
+    };
+  };
+
+  const onData = fanOut<string>((cb) => onyx.onPtyData(cb));
+  const onExit = fanOut<number>((cb) => onyx.onPtyExit(cb));
+  const onCwd = fanOut<string>((cb) => onyx.onPtyCwd(cb));
+
+  return {
+    start: (id, cwd, cols, rows, shell) => onyx.startPty(id, cwd, cols, rows, shell),
+    write: (id, data) => onyx.writePty(id, data),
+    resize: (id, cols, rows) => onyx.resizePty(id, cols, rows),
+    kill: (id) => onyx.killPty(id),
+    setCwd: (id, cwd) => onyx.setPtyCwd(id, cwd),
+    onData,
+    onExit,
+    onCwd,
+  };
+}
+
+/**
  * FsApi over the Electron preload bridge (`window.onyx`) — the standalone app's
  * implementation. Everything here is adaptation, never logic: fan the single
  * `fs:event` stream out to per-directory subscribers, and turn the fire-and-

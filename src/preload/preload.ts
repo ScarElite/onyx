@@ -110,6 +110,19 @@ const bridge: OnyxBridge = {
   onWindowState: (cb: (maximized: boolean) => void) => subscribe<[boolean]>(CH.windowState, cb),
   getAppVersion: () => ipcRenderer.invoke(CH.appVersion) as Promise<string>,
 
+  // --- terminal dock ---
+  startPty: (id, cwd, cols, rows, shell) =>
+    ipcRenderer.send(CH.ptyStart, id, cwd, cols, rows, shell),
+  writePty: (id, data) => ipcRenderer.send(CH.ptyWrite, id, data),
+  resizePty: (id, cols, rows) => ipcRenderer.send(CH.ptyResize, id, cols, rows),
+  killPty: (id) => ipcRenderer.send(CH.ptyKill, id),
+  setPtyCwd: (id, cwd) => ipcRenderer.send(CH.ptySetCwd, id, cwd),
+  onPtyData: (cb: (id: string, chunk: string) => void) =>
+    subscribe<[string, string]>(CH.ptyData, cb),
+  onPtyExit: (cb: (id: string, code: number) => void) =>
+    subscribe<[string, number]>(CH.ptyExit, cb),
+  onPtyCwd: (cb: (id: string, cwd: string) => void) => subscribe<[string, string]>(CH.ptyCwd, cb),
+
   // --- auto-update ---
   checkForUpdate: () => ipcRenderer.invoke(CH.checkForUpdate) as Promise<UpdateStatus>,
   onUpdateStatus: (cb: (status: UpdateStatus) => void) =>

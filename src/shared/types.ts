@@ -305,6 +305,12 @@ export interface Settings {
   /** Compute and show real folder sizes in the background. */
   showFolderSizes: boolean;
   showGitStatus: boolean;
+  /** Show the docked Conduit terminal under the active pane. */
+  terminalVisible: boolean;
+  /** Height of the terminal dock in px. */
+  terminalHeight: number;
+  /** Optional shell override (e.g. 'pwsh.exe', 'cmd.exe'). Empty = auto-detect. */
+  shell?: string;
   pinned: Place[];
   /** Restored on launch when present. */
   session?: SessionState;
@@ -324,6 +330,9 @@ export const DEFAULT_SETTINGS: Settings = {
   deleteToTrash: true,
   showFolderSizes: true,
   showGitStatus: true,
+  terminalVisible: false,
+  terminalHeight: 240,
+  shell: '',
   pinned: [],
 };
 
@@ -425,6 +434,19 @@ export interface OnyxBridge {
   onWindowState(cb: (maximized: boolean) => void): () => void;
   getAppVersion(): Promise<string>;
 
+  // --- terminal dock (node-pty, main process) ---
+  /** Spawn a shell for this pane at `cwd`. Safe to call twice for the same id. */
+  startPty(id: string, cwd: string, cols: number, rows: number, shell?: string): void;
+  writePty(id: string, data: string): void;
+  resizePty(id: string, cols: number, rows: number): void;
+  killPty(id: string): void;
+  /** The pane navigated — move the shell too (at its next idle prompt). */
+  setPtyCwd(id: string, cwd: string): void;
+  onPtyData(cb: (id: string, chunk: string) => void): () => void;
+  onPtyExit(cb: (id: string, code: number) => void): () => void;
+  /** The shell moved (OSC 7) — the pane should follow. */
+  onPtyCwd(cb: (id: string, cwd: string) => void): () => void;
+
   // --- auto-update ---
   /** Current update state; also triggers a fresh check when one isn't running. */
   checkForUpdate(): Promise<UpdateStatus>;
@@ -492,6 +514,15 @@ export const CH = {
   setOpacity: 'app:setOpacity',
   windowState: 'app:windowState',
   appVersion: 'app:version',
+
+  ptyStart: 'pty:start',
+  ptyWrite: 'pty:write',
+  ptyResize: 'pty:resize',
+  ptyKill: 'pty:kill',
+  ptySetCwd: 'pty:setCwd',
+  ptyData: 'pty:data',
+  ptyExit: 'pty:exit',
+  ptyCwd: 'pty:cwd',
 
   checkForUpdate: 'app:checkForUpdate',
   updateStatus: 'app:updateStatus',
