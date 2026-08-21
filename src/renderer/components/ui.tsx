@@ -125,17 +125,31 @@ export function ContextMenu({
   }, [x, y]);
 
   useEffect(() => {
-    const close = () => onClose();
+    /**
+     * Dismiss on a mousedown OUTSIDE the menu.
+     *
+     * The containment check is the whole point. This listener is on `window` in
+     * the CAPTURE phase, so it runs before the event has even reached the menu —
+     * long before React's bubble-phase handlers. An `e.stopPropagation()` on the
+     * menu element therefore cannot stop it, and without the check every
+     * mousedown on a menu item closed the menu, unmounted the button, and left
+     * the following mouseup with nothing to click. The menu looked fine and no
+     * item ever did anything.
+     */
+    const close = (e: MouseEvent) => {
+      if (ref.current?.contains(e.target as Node)) return;
+      onClose();
+    };
+    const onResize = () => onClose();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-    // `capture` so a click anywhere dismisses before it activates something else.
     window.addEventListener('mousedown', close, true);
-    window.addEventListener('resize', close);
+    window.addEventListener('resize', onResize);
     window.addEventListener('keydown', onKey, true);
     return () => {
       window.removeEventListener('mousedown', close, true);
-      window.removeEventListener('resize', close);
+      window.removeEventListener('resize', onResize);
       window.removeEventListener('keydown', onKey, true);
     };
   }, [onClose]);
