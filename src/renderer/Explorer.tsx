@@ -67,6 +67,13 @@ export interface ExplorerProps {
   initialPath: string;
   /** Rendered by the host (the standalone app opens its own settings modal). */
   onOpenSettings?: () => void;
+  /**
+   * Extra entries for the action palette, supplied by the host — the same
+   * idea as Conduit's `commands` prop on <Terminal/>. The standalone app uses
+   * it for "Check for updates", which is Electron-specific and has no
+   * business living inside the explorer.
+   */
+  commands?: PaletteItem[];
   /** Lets the host chrome show the active folder in the title bar. */
   onActivePathChange?: (path: string) => void;
 }
@@ -92,6 +99,7 @@ export function Explorer({
   initialPath,
   onOpenSettings,
   onActivePathChange,
+  commands: hostCommands,
 }: ExplorerProps): React.JSX.Element {
   const [session, setSession] = useState<SessionState>(() => restoreSession(settings, initialPath));
   const [selections, setSelections] = useState<Record<string, { paths: string[]; cursor: string | null }>>({});
@@ -551,7 +559,10 @@ export function Explorer({
       { label: 'Undo last file operation', hint: 'Ctrl+Z', run: () => void doUndo() },
     ];
     if (onOpenSettings) items.push({ label: 'Settings', hint: 'Ctrl+,', run: onOpenSettings });
-    return items.map((item, i) => ({ id: `cmd${i}`, ...item }));
+    return [
+      ...items.map((item, i) => ({ id: `cmd${i}`, ...item })),
+      ...(hostCommands ?? []),
+    ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeTab.id, activeLeaf.id, activeLeaf.path, selectedEntries, activeSelection.paths,
@@ -559,7 +570,7 @@ export function Explorer({
     settings.terminalVisible, terminalApi, toggleTerminal, assistant,
     activeLeaf.viewMode, patchLeaf,
     newTab, closeTab, splitPane, closePane, doNewFolder, doNewFile, pinCurrent, doUndo,
-    onSettingsChange, onOpenSettings, fsApi,
+    onSettingsChange, onOpenSettings, fsApi, hostCommands,
   ]);
 
   /** Fuzzy path targets: pins, known folders, drives, and this pane's history. */

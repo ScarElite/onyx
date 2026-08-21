@@ -10,6 +10,7 @@ import {
   shell,
 } from 'electron';
 import path from 'node:path';
+import { appendFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
@@ -86,12 +87,28 @@ if (gotSingleInstanceLock) {
     updateSource: { type: UpdateSourceType.ElectronPublicUpdateService, repo: 'ScarElite/onyx' },
     notifyUser: false,
   });
+  diag(`launch v${app.getVersion()} packaged=${app.isPackaged}`);
+}
+
+/**
+ * Leave a trail on disk for the one bug that is otherwise undebuggable: a
+ * machine that silently "never updates". Nothing else in Onyx logs, because
+ * nothing else fails invisibly on someone else's computer.
+ */
+function diag(msg: string): void {
+  try {
+    appendFileSync(path.join(app.getPath('temp'), 'onyx-diag.log'), `${new Date().toISOString()} ${msg}
+`);
+  } catch {
+    /* never let logging break startup */
+  }
 }
 
 let updateStatus: UpdateStatus = { phase: app.isPackaged ? 'idle' : 'unsupported' };
 
 function setUpdateStatus(next: UpdateStatus): void {
   updateStatus = next;
+  diag(`update: ${next.phase}${next.version ? ` v${next.version}` : ''} ${next.message ?? ''}`);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(CH.updateStatus, next);
   }
@@ -419,8 +436,12 @@ function registerIpc(): void {
   });
 
   ipcMain.on(CH.restartToUpdate, () => {
-    // Only meaningful once a downloaded update is staged.
-    if (updateStatus.phase === 'ready') autoUpdater.quitAndInstall();
+    // Only meaningful once a downloaded update is staged. quitAndInstall exits
+    // the app, swaps in the new version, and relaunches it.
+    if (updateStatus.phase === 'ready') {
+      diag('update: quitAndInstall');
+      autoUpdater.quitAndInstall();
+    }
   });
 
   ipcMain.on(CH.windowControl, (_e, action: string) => {

@@ -221,6 +221,16 @@ input {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
+/* Transient narration for a check the user explicitly asked for. */
+.updatetoast {
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 .titlebar__controls {
   display: flex;
   -webkit-app-region: no-drag;

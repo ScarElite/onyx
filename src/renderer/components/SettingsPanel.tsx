@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Settings, Theme } from '../../shared/types';
+import type { Settings, Theme, UpdateStatus } from '../../shared/types';
 import { PRESETS } from '../themes';
 import { Modal } from './ui';
 
@@ -32,15 +32,39 @@ function Toggle({
   );
 }
 
+/** One line of plain English for each updater state. */
+function updateLabel(update: UpdateStatus | null): string {
+  switch (update?.phase) {
+    case 'checking':
+      return 'Checking…';
+    case 'downloading':
+      return 'Downloading…';
+    case 'ready':
+      return `${update.version ? `v${update.version}` : 'An update'} is staged — restart to apply`;
+    case 'uptodate':
+      return 'Up to date';
+    case 'error':
+      return update.message ?? 'Update check failed';
+    case 'unsupported':
+      return 'Dev build — updates only run in the installed app';
+    default:
+      return 'Checks on launch and every 10 minutes';
+  }
+}
+
 export function SettingsPanel({
   settings,
   onChange,
   version,
+  update,
+  onCheckForUpdate,
   onClose,
 }: {
   settings: Settings;
   onChange: (patch: Partial<Settings>) => void;
   version: string;
+  update: UpdateStatus | null;
+  onCheckForUpdate: () => void;
   onClose: () => void;
 }): React.JSX.Element {
   const themes: Theme[] = [...PRESETS, ...settings.customThemes];
@@ -213,6 +237,23 @@ export function SettingsPanel({
             value={settings.shell ?? ''}
             onChange={(e) => onChange({ shell: e.target.value })}
           />
+        </div>
+      </div>
+
+      <div className="settings__section">
+        <h3>Updates</h3>
+        <div className="setting">
+          <div>
+            <div className="setting__label">Onyx {version}</div>
+            <span className="setting__hint">{updateLabel(update)}</span>
+          </div>
+          <button
+            type="button"
+            className={`btn${update?.phase === 'ready' ? ' btn--primary' : ''}`}
+            onClick={onCheckForUpdate}
+            disabled={update?.phase === 'checking' || update?.phase === 'downloading'}>
+            {update?.phase === 'ready' ? 'Restart now' : 'Check now'}
+          </button>
         </div>
       </div>
 

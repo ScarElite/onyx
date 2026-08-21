@@ -5,6 +5,7 @@ import { createBridgeFsApi, createBridgeTerminalApi } from './fs-api';
 import { createBrainAssistantApi } from './assistant';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Icon } from './components/ui';
+import type { PaletteItem } from './components/CommandPalette';
 import { applyTheme, findTheme } from './themes';
 
 /**
@@ -23,6 +24,15 @@ export function App(): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activePath, setActivePath] = useState('');
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const [updateToast, setUpdateToast] = useState<string | null>(null);
+  /**
+   * True while a check the USER asked for is in flight. Background activity
+   * stays silent — a staged update just lights the title-bar pill and applies
+   * next launch — but an explicit check narrates every phase, because someone
+   * who just asked "am I up to date?" deserves an answer either way.
+   */
+  const explicitUpdate = useRef(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   /* ---- boot ---- */
 
@@ -40,14 +50,76 @@ export function App(): React.JSX.Element {
 
   useEffect(() => window.onyx.onWindowState(setMaximized), []);
 
-  // The updater runs itself on a schedule; this just mirrors what it's doing.
-  // Nothing is shown for 'idle'/'checking'/'uptodate' — a file manager should
-  // not narrate its own background chores.
+  const showUpdateToast = useCallback((message: string, autoHideMs?: number) => {
+    clearTimeout(toastTimer.current);
+    setUpdateToast(message);
+    if (autoHideMs) toastTimer.current = setTimeout(() => setUpdateToast(null), autoHideMs);
+  }, []);
+
+  // Main's updater streams its state here. Background phases are silent; an
+  // explicit check is narrated, and restarts into the new version as soon as it
+  // has downloaded rather than making the user click a second time.
   useEffect(() => {
-    const stop = window.onyx.onUpdateStatus(setUpdate);
+    const stop = window.onyx.onUpdateStatus((s) => {
+      setUpdate(s);
+      const explicit = explicitUpdate.current;
+      if (s.phase === 'ready') {
+        if (explicit) {
+          explicitUpdate.current = false;
+          showUpdateToast(`Update downloaded${s.version ? ` (v${s.version})` : ''} — restarting…`);
+          setTimeout(() => window.onyx.restartToUpdate(), 1200);
+        }
+        return; // a background 'ready' is announced by the title-bar pill alone
+      }
+      if (!explicit) return;
+      if (s.phase === 'checking') showUpdateToast('Checking for updates…');
+      else if (s.phase === 'downloading') showUpdateToast('Update found — downloading…');
+      else if (s.phase === 'uptodate') {
+        explicitUpdate.current = false;
+        showUpdateToast("You're on the latest version.", 6000);
+      } else if (s.phase === 'error') {
+        explicitUpdate.current = false;
+        showUpdateToast(`Update check failed: ${s.message ?? 'unknown error'}`, 8000);
+      }
+    });
+    // Seed the current state on load. In a packaged app this doubles as a
+    // check-on-open, alongside the updater's own 10-minute timer.
     void window.onyx.checkForUpdate().then(setUpdate);
     return stop;
-  }, []);
+  }, [showUpdateToast]);
+
+  /** The user asked. Narrate it, and restart into the update once it lands. */
+  const checkForUpdate = useCallback(() => {
+    if (update?.phase === 'ready') {
+      showUpdateToast('Update already downloaded — restarting…');
+      setTimeout(() => window.onyx.restartToUpdate(), 800);
+      return;
+    }
+    explicitUpdate.current = true;
+    showUpdateToast('Checking for updates…');
+    void window.onyx.checkForUpdate().then((s) => {
+      setUpdate(s);
+      if (s.phase === 'unsupported') {
+        explicitUpdate.current = false;
+        showUpdateToast('Dev build — the updater only runs in the installed app.', 6000);
+      } else if (s.phase === 'downloading') {
+        // A background download was already in flight; narrate it from here.
+        showUpdateToast('Update found — downloading…');
+      }
+    });
+  }, [update?.phase, showUpdateToast]);
+
+  const hostCommands = useMemo<PaletteItem[]>(
+    () => [
+      {
+        id: 'host-update',
+        label: 'Check for updates',
+        hint: update?.version ? `v${update.version} ready` : '',
+        run: checkForUpdate,
+      },
+    ],
+    [checkForUpdate, update?.version],
+  );
 
   /**
    * "Ask V" is only offered when a brain URL is configured — clearing it in
@@ -123,14 +195,17 @@ export function App(): React.JSX.Element {
         </div>
         <div className="titlebar__spacer" />
         <div className="titlebar__status" title={activePath}>
-          {update?.phase === 'downloading' && <span className="updatepill">Updating…</span>}
+          {updateToast && <span className="updatetoast">{updateToast}</span>}
+          {!updateToast && update?.phase === 'downloading' && (
+            <span className="updatepill">Downloading update…</span>
+          )}
           {update?.phase === 'ready' && (
             <button
               type="button"
               className="updatepill updatepill--ready"
-              title={`Version ${update.version ?? 'new'} is staged. Click to restart into it now; otherwise it applies on the next launch.`}
+              title={`${update.version ? `v${update.version}` : 'A new version'} is staged. Click to restart into it now; otherwise it applies on the next launch.`}
               onClick={() => window.onyx.restartToUpdate()}>
-              Update ready — restart
+              ⟳ {update.version ? `v${update.version} ready` : 'update ready'} — restart
             </button>
           )}
           <span>{activePath}</span>
@@ -177,6 +252,7 @@ export function App(): React.JSX.Element {
         initialPath={home}
         onOpenSettings={() => setSettingsOpen(true)}
         onActivePathChange={setActivePath}
+        commands={hostCommands}
       />
 
       {settingsOpen && (
@@ -184,6 +260,8 @@ export function App(): React.JSX.Element {
           settings={settings}
           onChange={changeSettings}
           version={version}
+          update={update}
+          onCheckForUpdate={checkForUpdate}
           onClose={() => setSettingsOpen(false)}
         />
       )}

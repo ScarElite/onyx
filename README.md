@@ -210,15 +210,29 @@ npm run publish      # upload those to a GitHub Release tagged v<version>
 
 ### Updates
 
-Installed copies check GitHub Releases on launch and every 10 minutes via
-`update.electronjs.org`, download in the background, and apply on the next launch —
-`notifyUser: false`, because a file manager should never throw a modal over a drag
-you're halfway through. When a version is staged the title bar offers *Update ready —
-restart*. This only works in a **Squirrel-installed** build: run straight from
-`out/Onyx-win32-x64/` and the updater correctly reports "Can not find Squirrel".
+Same shape as Conduit's. Installed copies check GitHub Releases on launch and every
+10 minutes via `update.electronjs.org` and download in the background.
 
-To ship one: bump `version` in `package.json`, then `npm run publish`. The repo must
-be public and the release non-draft, or `update.electronjs.org` won't serve it.
+- **Background activity is silent.** `notifyUser: false` — a file manager should never
+  throw a native modal over a drag you're halfway through. A staged update just lights
+  the title-bar pill (`⟳ v0.2.1 ready — restart`) and applies on the next launch.
+- **An explicit check is narrated.** *Check for updates* (Ctrl+Shift+P, or Settings →
+  Updates) reports every phase — checking, downloading, up to date, or the error — and
+  once the download lands it restarts into the new version rather than making you click
+  a second time.
+- **Diagnostics.** Every transition is appended to `%TEMP%\onyx-diag.log` with the app
+  version, because "it never updates" is otherwise undebuggable on someone else's
+  machine.
+
+Only works in a **Squirrel-installed** build: run straight from `out/Onyx-win32-x64/`
+and it correctly reports "Can not find Squirrel".
+
+> **The feed needs a public repo.** `update.electronjs.org` only serves public
+> repositories with published, non-draft releases. `ScarElite/onyx` is currently
+> private and has no releases, so the updater is implemented but inert. To turn it on:
+> make the repo public, bump `version` in `package.json`, then `npm run publish`.
+> To stay private instead, swap the `updateSource` in `src/main/main.ts` for
+> `UpdateSourceType.StaticStorage` pointed at a feed you host.
 
 ### Icon
 
