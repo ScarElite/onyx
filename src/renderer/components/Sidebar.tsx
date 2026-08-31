@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { HOME_PATH, type DriveInfo, type Place } from '../../shared/types';
+import { readDropPaths, useSpringLoad } from '../lib/dnd';
 import { formatBytes } from '../lib/format';
 import { Icon } from './ui';
 
@@ -29,23 +30,17 @@ export function Sidebar({
 }): React.JSX.Element {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
-  const readDropPaths = (e: React.DragEvent): string[] => {
-    const internal = e.dataTransfer.getData('application/x-onyx-paths');
-    if (internal) {
-      try {
-        return JSON.parse(internal) as string[];
-      } catch {
-        return [];
-      }
-    }
-    return [...e.dataTransfer.files].map((f) => window.onyx.getPathForFile(f)).filter(Boolean);
-  };
+  // Holding a drag over a place walks the pane into it — the usual way into a
+  // nested folder starts from somewhere in the sidebar, not from the folder
+  // you happen to be standing in.
+  const spring = useSpringLoad(onNavigate);
 
   const dropProps = (dest: string) => ({
     onDragOver: (e: React.DragEvent) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = e.ctrlKey ? ('copy' as const) : ('move' as const);
       setDropTarget(dest);
+      spring.hover(dest);
     },
     onDragLeave: () => setDropTarget((t) => (t === dest ? null : t)),
     onDrop: (e: React.DragEvent) => {
@@ -66,6 +61,7 @@ export function Sidebar({
         'place',
         isCurrent(place.path) ? 'place--active' : '',
         dropTarget === place.path ? 'place--drop' : '',
+        spring.path === place.path ? 'is-springing' : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -148,6 +144,7 @@ export function Sidebar({
                 'drive',
                 isCurrent(drive.path) ? 'drive--active' : '',
                 dropTarget === drive.path ? 'place--drop' : '',
+                spring.path === drive.path ? 'is-springing' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}

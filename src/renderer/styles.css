@@ -1926,3 +1926,39 @@ input {
   text-transform: uppercase;
   font-size: 11px;
 }
+
+/* ================================================================== *
+ * Spring-loaded folders
+ * ================================================================== *
+ * Holding a drag over a folder — a row, a tile, a sidebar place, a
+ * breadcrumb — opens it, so a file can be walked several levels down in one
+ * gesture. The bar fills over the hover delay so the wait reads as "about to
+ * open" rather than as nothing happening.
+ *
+ * The 650ms below must match SPRING_DELAY_MS in lib/dnd.ts. */
+
+.is-springing {
+  position: relative;
+}
+.is-springing::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 0;
+  background: var(--accent);
+  animation: spring-fill 650ms linear forwards;
+  pointer-events: none;
+}
+
+@keyframes spring-fill {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+/* Breadcrumbs accept a drop too — that is the way back up mid-drag. */
+.crumb--drop {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}

@@ -9,6 +9,7 @@ import {
   type ViewMode,
 } from '../../shared/types';
 import type { FsApi } from '../fs-api';
+import { ONYX_PATHS_MIME, beginDrag, isDragging, readDropPaths, useSpringLoad } from '../lib/dnd';
 import { formatBytes, formatDate, formatKind } from '../lib/format';
 import { useShellIcons } from '../lib/useShellIcons';
 import { Icon, iconForEntry } from './ui';
@@ -19,6 +20,15 @@ const OVERSCAN = 8;
 /** Grid tile footprint, including its label. */
 const TILE_W = 124;
 const TILE_H = 104;
+
+/**
+ * Dead space kept below the last row once a listing overflows, so there is
+ * always somewhere to click to drop the selection, paste, or right-click for
+ * "New folder". A folder that fills the viewport otherwise leaves no empty
+ * space at all, and the only way to reach the background menu is to shrink the
+ * window or scroll to a gap that isn't there.
+ */
+const TRAIL_H = 96;
 
 /**
  * Extensions worth drawing a real thumbnail for. Everything else gets its glyph.
@@ -122,7 +132,11 @@ export function FileList(props: FileListProps): React.JSX.Element {
   const first = firstRow * columns;
   const last = Math.min(entries.length, lastRow * columns);
   const visible = entries.slice(first, last);
-  const canvasH = Math.ceil(entries.length / columns) * cellH;
+  const contentH = Math.ceil(entries.length / columns) * cellH;
+  // The trailing space fades in only as far as the viewport isn't already
+  // providing it: a short listing must not grow a scrollbar for empty space it
+  // already has below the last row.
+  const canvasH = contentH + Math.max(0, Math.min(TRAIL_H, contentH + TRAIL_H - viewportH));
 
   /** Largest folder in this listing — the denominator for the size heat bars. */
   const maxFolderSize = useMemo(() => {
@@ -276,29 +290,32 @@ export function FileList(props: FileListProps): React.JSX.Element {
       // Alt starts an OS-level drag so files can be dropped into other apps.
       // Electron's startDrag takes over the pointer, which is exactly why it
       // cannot be the default: it would kill dragging between Onyx's own panes.
+      // Cancelling the HTML drag means no dragend, so beginDrag() stays out of
+      // this branch rather than leaving paths marked as in flight forever.
       e.preventDefault();
       window.onyx.startDrag(paths);
       return;
     }
+    beginDrag(paths);
     e.dataTransfer.effectAllowed = 'copyMove';
-    e.dataTransfer.setData('application/x-onyx-paths', JSON.stringify(paths));
+    e.dataTransfer.setData(ONYX_PATHS_MIME, JSON.stringify(paths));
     e.dataTransfer.setData('text/plain', paths.join('\r\n'));
   };
 
-  /** Read dropped paths from either an internal drag or a drop from Explorer. */
-  const readDropPaths = (e: React.DragEvent): string[] => {
-    const internal = e.dataTransfer.getData('application/x-onyx-paths');
-    if (internal) {
-      try {
-        return JSON.parse(internal) as string[];
-      } catch {
-        return [];
-      }
-    }
-    // File.path was removed in Electron 32+; webUtils (via the preload) is the
-    // only supported way to recover a dropped file's real path.
-    return [...e.dataTransfer.files].map((f) => window.onyx.getPathForFile(f)).filter(Boolean);
-  };
+  /**
+   * Holding a drag over a folder opens it, so a file can be walked into a
+   * deeply nested folder in one gesture. Only rows pass a path here; anything
+   * else cancels the countdown.
+   */
+  const spring = useSpringLoad(
+    useCallback(
+      (path: string) => {
+        const entry = entries.find((x) => x.path === path);
+        if (entry) onOpen(entry);
+      },
+      [entries, onOpen],
+    ),
+  );
 
   const handleDrop = (e: React.DragEvent, destDir: string) => {
     e.preventDefault();
@@ -313,6 +330,8 @@ export function FileList(props: FileListProps): React.JSX.Element {
     e.stopPropagation();
     e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
     setDropTarget(target);
+    // Pausing on the row you just picked up must not walk the pane into it.
+    spring.hover(target !== null && isDragging(target) ? null : target);
   };
 
   /* ---- render ---- */
@@ -391,6 +410,7 @@ export function FileList(props: FileListProps): React.JSX.Element {
             if (entry.inaccessible) classes.push('row--inaccessible');
             if (git === 'ignored') classes.push('row--ignored');
             if (dropTarget === entry.path) classes.push(grid ? 'tile--droptarget' : 'row--droptarget');
+            if (spring.path === entry.path) classes.push('is-springing');
 
             const position = grid
               ? {

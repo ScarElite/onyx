@@ -11,6 +11,7 @@ import {
   type SortKey,
 } from '../../shared/types';
 import type { FsApi } from '../fs-api';
+import { readDropPaths, useSpringLoad } from '../lib/dnd';
 import { breadcrumbSegments } from '../lib/format';
 import { parseFilter } from '../lib/filter';
 import { sortEntries } from '../lib/sort';
@@ -82,7 +83,12 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
   const [git, setGit] = useState<GitStatus | null>(null);
   const [folderSizes, setFolderSizes] = useState<Record<string, number>>({});
   const [editingPath, setEditingPath] = useState<string | null>(null);
+  const [crumbDrop, setCrumbDrop] = useState<string | null>(null);
   const filterRef = useRef<HTMLInputElement>(null);
+
+  // The breadcrumbs are the way back OUT mid-drag: hold over an ancestor to
+  // walk up, then spring back down a different branch without ever letting go.
+  const crumbSpring = useSpringLoad(onNavigate);
 
   /* ---- load the listing, and reload when the folder changes on disk ---- */
 
@@ -270,8 +276,28 @@ export function FilePane(props: FilePaneProps): React.JSX.Element {
                     {i > 0 && <span className="crumb__sep">›</span>}
                     <button
                       type="button"
-                      className={`crumb${i === segments.length - 1 ? ' crumb--last' : ''}`}
-                      onClick={() => onNavigate(seg.path)}>
+                      className={[
+                        'crumb',
+                        i === segments.length - 1 ? 'crumb--last' : '',
+                        crumbDrop === seg.path ? 'crumb--drop' : '',
+                        crumbSpring.path === seg.path ? 'is-springing' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      onClick={() => onNavigate(seg.path)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+                        setCrumbDrop(seg.path);
+                        crumbSpring.hover(seg.path);
+                      }}
+                      onDragLeave={() => setCrumbDrop((t) => (t === seg.path ? null : t))}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setCrumbDrop(null);
+                        const paths = readDropPaths(e);
+                        if (paths.length) onDropPaths(paths, seg.path, e.ctrlKey);
+                      }}>
                       {seg.label}
                     </button>
                   </React.Fragment>
