@@ -1962,3 +1962,11 @@ input {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
+
+/* A settings row whose control is more than one button (Updates). */
+.setting__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}

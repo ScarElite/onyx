@@ -25,6 +25,8 @@ export function App(): React.JSX.Element {
   const [activePath, setActivePath] = useState('');
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [updateToast, setUpdateToast] = useState<string | null>(null);
+  /** When the last check finished, for the "checked at 2:31 PM" hint. */
+  const [lastChecked, setLastChecked] = useState<number | null>(null);
   /**
    * True while a check the USER asked for is in flight. Background activity
    * stays silent — a staged update just lights the title-bar pill and applies
@@ -57,17 +59,22 @@ export function App(): React.JSX.Element {
   }, []);
 
   // Main's updater streams its state here. Background phases are silent; an
-  // explicit check is narrated, and restarts into the new version as soon as it
-  // has downloaded rather than making the user click a second time.
+  // explicit check is narrated. Installing is always the user's call — the app
+  // restarts to apply an update, which must never happen unasked.
   useEffect(() => {
     const stop = window.onyx.onUpdateStatus((s) => {
       setUpdate(s);
       const explicit = explicitUpdate.current;
+      if (s.phase === 'ready' || s.phase === 'uptodate' || s.phase === 'error') {
+        setLastChecked(Date.now());
+      }
       if (s.phase === 'ready') {
         if (explicit) {
           explicitUpdate.current = false;
-          showUpdateToast(`Update downloaded${s.version ? ` (v${s.version})` : ''} — restarting…`);
-          setTimeout(() => window.onyx.restartToUpdate(), 1200);
+          showUpdateToast(
+            `${s.version ? `v${s.version}` : 'Update'} downloaded — Install it from Settings or the title bar`,
+            10000,
+          );
         }
         return; // a background 'ready' is announced by the title-bar pill alone
       }
@@ -88,11 +95,13 @@ export function App(): React.JSX.Element {
     return stop;
   }, [showUpdateToast]);
 
-  /** The user asked. Narrate it, and restart into the update once it lands. */
+  /** The user asked. Narrate every phase; stop short of installing. */
   const checkForUpdate = useCallback(() => {
     if (update?.phase === 'ready') {
-      showUpdateToast('Update already downloaded — restarting…');
-      setTimeout(() => window.onyx.restartToUpdate(), 800);
+      showUpdateToast(
+        `${update.version ? `v${update.version}` : 'An update'} is already downloaded — press Install to restart into it.`,
+        8000,
+      );
       return;
     }
     explicitUpdate.current = true;
@@ -107,7 +116,14 @@ export function App(): React.JSX.Element {
         showUpdateToast('Update found — downloading…');
       }
     });
-  }, [update?.phase, showUpdateToast]);
+  }, [update?.phase, update?.version, showUpdateToast]);
+
+  /** The Install button, and the title-bar pill: restart into what's staged. */
+  const installUpdate = useCallback(() => {
+    if (update?.phase !== 'ready') return;
+    showUpdateToast(`Installing${update.version ? ` v${update.version}` : ''} — restarting…`);
+    setTimeout(() => window.onyx.restartToUpdate(), 600);
+  }, [update?.phase, update?.version, showUpdateToast]);
 
   const hostCommands = useMemo<PaletteItem[]>(
     () => [
@@ -117,8 +133,20 @@ export function App(): React.JSX.Element {
         hint: update?.version ? `v${update.version} ready` : '',
         run: checkForUpdate,
       },
+      // Installing is a separate command for the same reason it is a separate
+      // button, and it only exists while there is something staged to install.
+      ...(update?.phase === 'ready'
+        ? [
+            {
+              id: 'host-install-update',
+              label: 'Install update and restart',
+              hint: update.version ? `v${update.version}` : '',
+              run: installUpdate,
+            },
+          ]
+        : []),
     ],
-    [checkForUpdate, update?.version],
+    [checkForUpdate, installUpdate, update?.phase, update?.version],
   );
 
   /**
@@ -204,7 +232,7 @@ export function App(): React.JSX.Element {
               type="button"
               className="updatepill updatepill--ready"
               title={`${update.version ? `v${update.version}` : 'A new version'} is staged. Click to restart into it now; otherwise it applies on the next launch.`}
-              onClick={() => window.onyx.restartToUpdate()}>
+              onClick={installUpdate}>
               ⟳ {update.version ? `v${update.version} ready` : 'update ready'} — restart
             </button>
           )}
@@ -261,7 +289,9 @@ export function App(): React.JSX.Element {
           onChange={changeSettings}
           version={version}
           update={update}
+          lastChecked={lastChecked}
           onCheckForUpdate={checkForUpdate}
+          onInstallUpdate={installUpdate}
           onClose={() => setSettingsOpen(false)}
         />
       )}

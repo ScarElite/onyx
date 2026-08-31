@@ -33,18 +33,21 @@ function Toggle({
 }
 
 /** One line of plain English for each updater state. */
-function updateLabel(update: UpdateStatus | null): string {
+function updateLabel(update: UpdateStatus | null, lastChecked: number | null): string {
+  const checked = lastChecked
+    ? ` · checked ${new Date(lastChecked).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+    : '';
   switch (update?.phase) {
     case 'checking':
       return 'Checking…';
     case 'downloading':
-      return 'Downloading…';
+      return `Downloading${update.version ? ` v${update.version}` : ''}…`;
     case 'ready':
-      return `${update.version ? `v${update.version}` : 'An update'} is staged — restart to apply`;
+      return `${update.version ? `v${update.version}` : 'An update'} downloaded — install it whenever you like`;
     case 'uptodate':
-      return 'Up to date';
+      return `Up to date${checked}`;
     case 'error':
-      return update.message ?? 'Update check failed';
+      return `${update.message ?? 'Update check failed'}${checked}`;
     case 'unsupported':
       return 'Dev build — updates only run in the installed app';
     default:
@@ -57,17 +60,25 @@ export function SettingsPanel({
   onChange,
   version,
   update,
+  lastChecked,
   onCheckForUpdate,
+  onInstallUpdate,
   onClose,
 }: {
   settings: Settings;
   onChange: (patch: Partial<Settings>) => void;
   version: string;
   update: UpdateStatus | null;
+  /** Epoch ms of the last completed check, for the "checked at" hint. */
+  lastChecked: number | null;
   onCheckForUpdate: () => void;
+  onInstallUpdate: () => void;
   onClose: () => void;
 }): React.JSX.Element {
   const themes: Theme[] = [...PRESETS, ...settings.customThemes];
+  // A check already in flight owns the updater singleton; a second one errors.
+  const checking = update?.phase === 'checking' || update?.phase === 'downloading';
+  const staged = update?.phase === 'ready';
 
   return (
     <Modal
@@ -242,18 +253,35 @@ export function SettingsPanel({
 
       <div className="settings__section">
         <h3>Updates</h3>
+        {/* Two separate buttons on purpose: looking is not installing. Onyx
+            restarts to apply an update, and a file manager must never do that
+            out from under a copy you are halfway through. */}
         <div className="setting">
           <div>
             <div className="setting__label">Onyx {version}</div>
-            <span className="setting__hint">{updateLabel(update)}</span>
+            <span className="setting__hint">{updateLabel(update, lastChecked)}</span>
           </div>
-          <button
-            type="button"
-            className={`btn${update?.phase === 'ready' ? ' btn--primary' : ''}`}
-            onClick={onCheckForUpdate}
-            disabled={update?.phase === 'checking' || update?.phase === 'downloading'}>
-            {update?.phase === 'ready' ? 'Restart now' : 'Check now'}
-          </button>
+          <div className="setting__actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={onCheckForUpdate}
+              disabled={checking || update?.phase === 'unsupported'}>
+              {update?.phase === 'checking' ? 'Checking…' : 'Check for updates'}
+            </button>
+            <button
+              type="button"
+              className={`btn${staged ? ' btn--primary' : ''}`}
+              onClick={onInstallUpdate}
+              disabled={!staged}
+              title={
+                staged
+                  ? 'Restart Onyx into the downloaded version now'
+                  : 'Available once an update has been downloaded'
+              }>
+              {staged && update.version ? `Install v${update.version}` : 'Install update'}
+            </button>
+          </div>
         </div>
       </div>
 
